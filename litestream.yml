@@ -1,0 +1,7 @@
+# Litestream streams the SQLite DB to S3-compatible storage (e.g. Cloudflare R2).
+# Set LITESTREAM_REPLICA_URL in .env, e.g. s3://your-bucket/plantpal
+# and the usual S3 credentials (LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY).
+dbs:
+  - path: /data/plantpal.db
+    replicas:
+      - url: ${LITESTREAM_REPLICA_URL}

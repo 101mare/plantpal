@@ -1,0 +1,41 @@
+services:
+  plantpal:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - plantpal-data:/data
+    # Loopback-only mapping for host health checks; public traffic goes through Caddy.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - PLANTPAL_DOMAIN=${PLANTPAL_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - plantpal
+
+  # Off-site SQLite backup. Enable with: docker compose --profile backup up -d
+  litestream:
+    image: litestream/litestream:0.3
+    restart: unless-stopped
+    profiles: ["backup"]
+    env_file: .env
+    volumes:
+      - plantpal-data:/data
+      - ./litestream.yml:/etc/litestream.yml:ro
+    command: replicate
+
+volumes:
+  plantpal-data:
+  caddy-data:
+  caddy-config:

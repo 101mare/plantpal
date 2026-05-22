@@ -1,0 +1,6 @@
+# Automatic HTTPS via Let's Encrypt when PLANTPAL_DOMAIN is a real public domain.
+# For local testing, PLANTPAL_DOMAIN=localhost serves over local HTTPS.
+{$PLANTPAL_DOMAIN} {
+	encode gzip
+	reverse_proxy plantpal:8000
+}

@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --color-pp-bg: #0d2018;
+  --color-pp-panel: #15362a;
+  --color-pp-panel-2: #1d4634;
+  --color-pp-border: #3a7d54;
+  --color-pp-gold: #e0b53d;
+  --color-pp-card: #4f8466;
+  --color-pp-card-ink: #0d2018;
+  --color-pp-thirsty: #2b5540;
+  --font-pixel: "Press Start 2P", "VT323", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* Hand-drawn vine wallpaper (already on the theme's dark green). */
+  background-color: #10251e;
+  background-image: url("/vines.png");
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  color: #e8f0e3;
+  font-family: var(--font-pixel);
+  -webkit-font-smoothing: none;
+}
+
+/* Pixel-art rendering for plant photos */
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Chunky retro borders */
+.pp-frame {
+  border: 3px solid var(--color-pp-border);
+  border-radius: 14px;
+  background: var(--color-pp-panel);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.pp-btn {
+  font-family: var(--font-pixel);
+  background: var(--color-pp-border);
+  color: #fff;
+  border: 2px solid #2a5e3e;
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: transform 0.05s ease;
+}
+.pp-btn:hover {
+  filter: brightness(1.1);
+}
+.pp-btn:active {
+  transform: translateY(2px);
+}
+.pp-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pp-heading {
+  color: var(--color-pp-gold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
