@@ -3,9 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../api";
-import { useI18n, errorText } from "../i18n";
+import { useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
+import { InlineError } from "../components/Feedback";
 import type { Locale, Theme } from "../types";
 
 export function SettingsPage() {
@@ -18,15 +19,12 @@ export function SettingsPage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
-  const onErr = (e: unknown) => toast.error(errorText(e, t));
-
   const patch = useMutation({
     mutationFn: api.updateSettings,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings"] });
       toast.success(t("settings.saved"));
     },
-    onError: onErr,
   });
   const logout = useMutation({
     mutationFn: api.logout,
@@ -34,7 +32,6 @@ export function SettingsPage() {
       qc.clear();
       nav("/login");
     },
-    onError: onErr,
   });
   const removeAccount = useMutation({
     mutationFn: api.deleteAccount,
@@ -42,7 +39,6 @@ export function SettingsPage() {
       qc.clear();
       nav("/login");
     },
-    onError: onErr,
   });
   const createInvite = useMutation({
     mutationFn: () => api.createUserInvite(1),
@@ -51,7 +47,6 @@ export function SettingsPage() {
       qc.invalidateQueries({ queryKey: ["invites"] });
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
-    onError: onErr,
   });
   const revoke = useMutation({
     mutationFn: (id: number) => api.revokeInvite(id),
@@ -59,7 +54,6 @@ export function SettingsPage() {
       qc.invalidateQueries({ queryKey: ["invites"] });
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
-    onError: onErr,
   });
   const changeEmail = useMutation({
     mutationFn: () => api.requestEmailChange(newEmail),
@@ -67,7 +61,6 @@ export function SettingsPage() {
       toast.success(t("settings.emailChangeSent"));
       setNewEmail("");
     },
-    onError: onErr,
   });
 
   function pickLocale(l: Locale) {
@@ -112,6 +105,7 @@ export function SettingsPage() {
             >
               {t("settings.sendVerify")}
             </button>
+            <InlineError error={changeEmail.error} />
           </div>
         </details>
       </Section>
@@ -143,6 +137,7 @@ export function SettingsPage() {
             }}
           />
         </label>
+        <InlineError error={patch.error} className="mt-2" />
       </Section>
 
       <Section title={`${t("settings.language")} / ${t("settings.theme")}`}>
@@ -214,6 +209,7 @@ export function SettingsPage() {
             </li>
           ))}
         </ul>
+        <InlineError error={createInvite.error ?? revoke.error} className="mt-2" />
       </Section>
 
       <div className="flex flex-col gap-2">
@@ -228,6 +224,7 @@ export function SettingsPage() {
         >
           {logout.isPending ? "…" : t("settings.logout")}
         </button>
+        <InlineError error={logout.error} />
         <button
           type="button"
           className="pp-btn"
@@ -255,6 +252,7 @@ export function SettingsPage() {
               {t("plant.cancel")}
             </button>
           </div>
+          <InlineError error={removeAccount.error} className="mt-3 text-center" />
         </Backdrop>
       )}
     </div>

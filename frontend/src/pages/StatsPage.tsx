@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
+import { ErrorState } from "../components/Feedback";
 
 export function StatsPage() {
   const { t } = useI18n();
@@ -21,16 +22,7 @@ export function StatsPage() {
       {isLoading ? (
         <p className="pp-heading text-center text-sm">{t("app.loading")}</p>
       ) : isError ? (
-        <div className="pp-frame p-6 text-center text-sm">
-          <p className="mb-3">{t("error.generic")}</p>
-          <button
-            type="button"
-            className="pp-btn"
-            onClick={() => qc.invalidateQueries({ queryKey: ["stats"] })}
-          >
-            {t("error.retry")}
-          </button>
-        </div>
+        <ErrorState onRetry={() => qc.invalidateQueries({ queryKey: ["stats"] })} />
       ) : !data || data.total_plants === 0 ? (
         <div className="pp-frame p-8 text-center text-sm">
           <div className="mb-3 text-4xl">📊</div>

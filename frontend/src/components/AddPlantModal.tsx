@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../api";
-import { useI18n, errorText } from "../i18n";
+import { useI18n } from "../i18n";
+import { InlineError } from "./Feedback";
 
 export function AddPlantModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -33,7 +34,6 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
       toast.success(t("plant.added"));
       onClose();
     },
-    onError: (err) => toast.error(errorText(err, t)),
   });
 
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -137,6 +137,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
             className="pp-input"
           />
         </Field>
+        <InlineError error={mutation.error} />
         <div className="mt-2 flex gap-2">
           <button type="submit" className="pp-btn flex-1" disabled={mutation.isPending}>
             {mutation.isPending ? "…" : t("plant.save")}

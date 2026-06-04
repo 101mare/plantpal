@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster, toast } from "sonner";
+import { ApiError } from "./api";
 import { App } from "./App";
 import { I18nProvider, detectLocale } from "./i18n";
 import { ThemeProvider, detectTheme, useTheme } from "./theme";
@@ -39,7 +40,23 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   });
 }
 
+// On an expired session (401) bounce to the login screen, instead of letting every query and
+// mutation surface its own error. Background-refetch failures stay silent (stale data stays
+// visible); initial-load failures are shown by each view's ErrorState; everything else is
+// handled inline at the trigger — so there are no app-wide error toasts anymore.
+function handle401(error: unknown) {
+  if (
+    error instanceof ApiError &&
+    error.status === 401 &&
+    !window.location.pathname.startsWith("/login")
+  ) {
+    window.location.assign("/login");
+  }
+}
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handle401 }),
+  mutationCache: new MutationCache({ onError: handle401 }),
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 

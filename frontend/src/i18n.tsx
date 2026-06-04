@@ -104,15 +104,33 @@ const resources: Record<Locale, Record<string, string>> = {
     "register.submit": "Account erstellen",
     "register.submitting": "Erstelle…",
     "register.failed": "Registrierung fehlgeschlagen.",
-    "error.code.rate_limited": "Zu viele Versuche. Bitte etwas später erneut probieren.",
-    "error.code.unauthenticated": "Nicht angemeldet. Bitte melde dich erneut an.",
+    "error.code.rate_limited": "Zu viele Versuche. Warte kurz und probier's dann nochmal.",
+    "error.code.unauthenticated": "Deine Sitzung ist abgelaufen. Bitte melde dich neu an.",
     "error.code.forbidden": "Dazu hast du keine Berechtigung.",
-    "error.code.csrf_failed": "Sicherheitsprüfung fehlgeschlagen. Bitte lade die Seite neu.",
-    "error.code.validation_error": "Bitte überprüfe deine Eingaben.",
-    "error.code.not_found": "Nicht gefunden.",
+    "error.code.csrf_failed":
+      "Das hat nicht geklappt. Bitte lade die Seite neu und versuch es erneut.",
+    "error.code.validation_error": "Bitte schau deine Eingaben nochmal durch.",
+    "error.code.not_found": "Das konnten wir nicht finden.",
+    "error.code.plant_not_found": "Diese Pflanze gibt es nicht mehr.",
+    "error.code.image_not_found": "Dieses Foto gibt es nicht mehr.",
+    "error.code.invite_not_found": "Diese Einladung gibt es nicht mehr.",
     "error.code.invite_quota_exceeded": "Dein Einladungs-Kontingent ist aufgebraucht.",
-    "error.generic": "Etwas ist schiefgelaufen.",
+    "error.code.invalid_code": "Der Code stimmt nicht. Bitte prüf ihn nochmal.",
+    "error.code.code_locked": "Zu viele Versuche. Fordere einen neuen Code an.",
+    "error.code.code_expired": "Dieser Code ist abgelaufen. Fordere einen neuen an.",
+    "error.code.token_expired": "Dieser Link ist abgelaufen. Fordere einen neuen an.",
+    "error.code.token_already_used": "Dieser Link wurde schon verwendet.",
+    "error.code.invalid_token": "Dieser Link ist ungültig. Fordere einen neuen an.",
+    "error.code.conflict": "Diese E-Mail-Adresse ist schon vergeben.",
+    "error.code.upload_too_large": "Das Foto ist zu groß. Bitte wähle eins bis 10 MB.",
+    "error.code.unsupported_media_type":
+      "Dieses Format können wir nicht verarbeiten. Bitte JPG, PNG oder WebP.",
+    "error.code.user_disabled": "Dieses Konto ist deaktiviert.",
+    "error.offline": "Keine Verbindung. Prüf kurz dein Internet.",
+    "error.server": "Etwas ist bei uns schiefgelaufen. Lade die Seite neu.",
+    "error.generic": "Etwas ist schiefgelaufen. Bitte versuch es nochmal.",
     "error.retry": "Erneut versuchen",
+    "error.dismiss": "Schließen",
   },
   en: {
     "app.loading": "Loading…",
@@ -213,15 +231,32 @@ const resources: Record<Locale, Record<string, string>> = {
     "register.submit": "Create account",
     "register.submitting": "Creating…",
     "register.failed": "Registration failed.",
-    "error.code.rate_limited": "Too many attempts. Please try again later.",
-    "error.code.unauthenticated": "Not signed in. Please sign in again.",
+    "error.code.rate_limited": "Too many attempts. Wait a moment, then try again.",
+    "error.code.unauthenticated": "Your session has expired. Please sign in again.",
     "error.code.forbidden": "You don't have permission to do that.",
-    "error.code.csrf_failed": "Security check failed. Please reload the page.",
-    "error.code.validation_error": "Please check your input.",
-    "error.code.not_found": "Not found.",
+    "error.code.csrf_failed": "That didn't work. Please reload the page and try again.",
+    "error.code.validation_error": "Please double-check your input.",
+    "error.code.not_found": "We couldn't find that.",
+    "error.code.plant_not_found": "This plant no longer exists.",
+    "error.code.image_not_found": "This photo no longer exists.",
+    "error.code.invite_not_found": "This invite no longer exists.",
     "error.code.invite_quota_exceeded": "You've used up your invite quota.",
-    "error.generic": "Something went wrong.",
+    "error.code.invalid_code": "That code isn't right. Please check it again.",
+    "error.code.code_locked": "Too many attempts. Please request a new code.",
+    "error.code.code_expired": "This code has expired. Request a new one.",
+    "error.code.token_expired": "This link has expired. Request a new one.",
+    "error.code.token_already_used": "This link has already been used.",
+    "error.code.invalid_token": "This link isn't valid. Request a new one.",
+    "error.code.conflict": "That email address is already taken.",
+    "error.code.upload_too_large": "That photo is too large. Please pick one up to 10 MB.",
+    "error.code.unsupported_media_type":
+      "We can't process that format. Please use JPG, PNG or WebP.",
+    "error.code.user_disabled": "This account is disabled.",
+    "error.offline": "No connection. Check your internet.",
+    "error.server": "Something went wrong on our end. Reload the page.",
+    "error.generic": "Something went wrong. Please try again.",
     "error.retry": "Try again",
+    "error.dismiss": "Dismiss",
   },
 };
 
@@ -269,9 +304,13 @@ export function useI18n(): I18nCtx {
  *  falling back to the server message for codes we don't translate. */
 export function errorText(err: unknown, t: TFn): string {
   if (err instanceof ApiError) {
+    if (err.status >= 500) return t("error.server"); // never show raw 5xx detail
     const key = `error.code.${err.code}`;
     const msg = t(key);
     return msg === key ? err.message : msg;
   }
-  return t("error.generic");
+  // A non-ApiError means the fetch itself failed — almost always network/offline.
+  return t(
+    typeof navigator !== "undefined" && !navigator.onLine ? "error.offline" : "error.generic",
+  );
 }

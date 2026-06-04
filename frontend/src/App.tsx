@@ -1,8 +1,9 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { useI18n } from "./i18n";
+import { Banner, ErrorBoundary } from "./components/Feedback";
 import { LoginPage } from "./pages/LoginPage";
 import { LoginCodePage } from "./pages/LoginCodePage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -38,48 +39,67 @@ function RouteFocus() {
   return null;
 }
 
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  return online;
+}
+
 export function App() {
   const { t } = useI18n();
+  const online = useOnline();
   return (
     <>
       <a href="#main" className="pp-skip pp-btn">
         {t("a11y.skip")}
       </a>
+      {!online && <Banner message={t("error.offline")} />}
       <RouteFocus />
-      <main id="main" className="h-full">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/login/code" element={<LoginCodePage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <PlantdexPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <RequireAuth>
-                <SettingsPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/stats"
-            element={
-              <RequireAuth>
-                <StatsPage />
-              </RequireAuth>
-            }
-          />
-          <Route path="/impressum" element={<ImpressumPage />} />
-          <Route path="/datenschutz" element={<DatenschutzPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+      <ErrorBoundary>
+        <main id="main" className="h-full">
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/login/code" element={<LoginCodePage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <PlantdexPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth>
+                  <SettingsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/stats"
+              element={
+                <RequireAuth>
+                  <StatsPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="/impressum" element={<ImpressumPage />} />
+            <Route path="/datenschutz" element={<DatenschutzPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </ErrorBoundary>
     </>
   );
 }

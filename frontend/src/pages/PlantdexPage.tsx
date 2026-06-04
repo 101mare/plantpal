@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../api";
-import { useI18n, errorText } from "../i18n";
+import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 import { PlantCard } from "../components/PlantCard";
 import { ThirstySection } from "../components/ThirstySection";
 import { AddPlantModal } from "../components/AddPlantModal";
 import { PlantDetailModal } from "../components/PlantDetailModal";
+import { ErrorState, InlineError } from "../components/Feedback";
 
 type Sort = "thirsty" | "name" | "recent";
 
@@ -30,6 +31,7 @@ export function PlantdexPage() {
   const [sort, setSort] = useState<Sort>("thirsty");
   const [thirstyOnly, setThirstyOnly] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Set<number>>(new Set());
+  const [actionError, setActionError] = useState<unknown>(null);
   const deleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   // Clear pending delete timers on unmount so a delayed delete can't fire after we leave.
@@ -43,13 +45,16 @@ export function PlantdexPage() {
 
   const water = useMutation({
     mutationFn: (id: number) => api.waterPlant(id),
-    onMutate: (id) => setWateringId(id),
+    onMutate: (id) => {
+      setActionError(null);
+      setWateringId(id);
+    },
     onSettled: () => setWateringId(null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plants"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
     },
-    onError: (err) => toast.error(errorText(err, t)),
+    onError: (err) => setActionError(err),
   });
 
   function unmarkPending(id: number) {
@@ -72,7 +77,7 @@ export function PlantdexPage() {
           qc.invalidateQueries({ queryKey: ["plants"] });
           qc.invalidateQueries({ queryKey: ["stats"] });
         })
-        .catch((err) => toast.error(errorText(err, t)))
+        .catch((err) => setActionError(err))
         .finally(() => unmarkPending(plant.id));
     }, 5000);
     deleteTimers.current.set(plant.id, timer);
@@ -137,16 +142,7 @@ export function PlantdexPage() {
       {isLoading ? (
         <p className="pp-heading text-center text-sm">{t("app.loading")}</p>
       ) : isError ? (
-        <div className="pp-frame p-6 text-center text-sm">
-          <p className="mb-3">{t("error.generic")}</p>
-          <button
-            type="button"
-            className="pp-btn"
-            onClick={() => qc.invalidateQueries({ queryKey: ["plants"] })}
-          >
-            {t("error.retry")}
-          </button>
-        </div>
+        <ErrorState onRetry={() => qc.invalidateQueries({ queryKey: ["plants"] })} />
       ) : all.length === 0 ? (
         <div className="pp-frame p-8 text-center text-sm">
           <div className="mb-3 text-4xl">🪴</div>
@@ -158,6 +154,7 @@ export function PlantdexPage() {
         </div>
       ) : (
         <>
+          <InlineError error={actionError} className="mb-3 text-center" />
           <ThirstySection plants={thirsty} onWater={water.mutate} wateringId={wateringId} />
 
           <div className="mb-3 flex flex-wrap items-center gap-2">

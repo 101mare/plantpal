@@ -2,9 +2,10 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../api";
-import { useI18n, errorText } from "../i18n";
+import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 import { Backdrop, Field } from "./AddPlantModal";
+import { InlineError } from "./Feedback";
 import { daysSince, plantStatus } from "../status";
 
 export function PlantDetailModal({
@@ -30,7 +31,6 @@ export function PlantDetailModal({
       toast.success(t("plant.watered"));
       onClose();
     },
-    onError: (err) => toast.error(errorText(err, t)),
   });
 
   const uploadImg = useMutation({
@@ -44,7 +44,6 @@ export function PlantDetailModal({
       setImgBust((n) => n + 1); // refresh image in place, keep modal open (UX-14)
       toast.success(t("plant.photoReplaced"));
     },
-    onError: (err) => toast.error(errorText(err, t)),
   });
 
   if (editing)
@@ -105,6 +104,7 @@ export function PlantDetailModal({
           )}
           {plant.notes && <Row k={t("plant.notes")} v={plant.notes} />}
         </dl>
+        <InlineError error={water.error ?? uploadImg.error} className="text-center" />
         <div className="mt-2 flex w-full gap-2">
           <button
             type="button"
@@ -167,7 +167,6 @@ function EditView({
       toast.success(t("plant.saved"));
       onClose();
     },
-    onError: (err) => toast.error(errorText(err, t)),
   });
 
   return (
@@ -221,6 +220,7 @@ function EditView({
             onChange={(e) => setWaterMl(e.target.value)}
           />
         </Field>
+        <InlineError error={save.error} />
         <div className="mt-2 flex gap-2">
           <button type="submit" className="pp-btn flex-1" disabled={save.isPending}>
             {save.isPending ? "…" : t("plant.save")}

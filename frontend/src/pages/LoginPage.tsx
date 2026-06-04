@@ -1,24 +1,26 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 import { api } from "../api";
-import { useI18n, errorText } from "../i18n";
+import { useI18n } from "../i18n";
 import { LangThemeBar } from "../components/LangThemeBar";
+import { InlineError } from "../components/Feedback";
 
 export function LoginPage() {
   const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
+    setErr(null);
     try {
       await api.requestLogin(email);
       setSent(true);
-    } catch (err) {
-      toast.error(errorText(err, t));
+    } catch (ex) {
+      setErr(ex);
     } finally {
       setBusy(false);
     }
@@ -62,6 +64,7 @@ export function LoginPage() {
             <button type="submit" className="pp-btn" disabled={busy}>
               {busy ? "…" : t("login.sendLink")}
             </button>
+            <InlineError error={err} />
           </form>
         )}
         <LangThemeBar />

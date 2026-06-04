@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { api } from "../api";
-import { useI18n, errorText } from "../i18n";
+import { useI18n } from "../i18n";
+import { InlineError } from "../components/Feedback";
 
 export function LoginCodePage() {
   const { t } = useI18n();
@@ -13,16 +13,18 @@ export function LoginCodePage() {
   const [email, setEmail] = useState(params.get("email") ?? "");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
+    setErr(null);
     try {
       await api.verifyCode(email, code);
       await qc.invalidateQueries({ queryKey: ["me"] });
       nav("/");
-    } catch (err) {
-      toast.error(errorText(err, t));
+    } catch (ex) {
+      setErr(ex);
     } finally {
       setBusy(false);
     }
@@ -56,6 +58,7 @@ export function LoginCodePage() {
           <button type="submit" className="pp-btn" disabled={busy || code.length !== 6}>
             {busy ? "…" : t("login.verify")}
           </button>
+          <InlineError error={err} className="text-center" />
           <Link to="/login" className="text-center text-[10px] underline opacity-70">
             {t("nav.back")}
           </Link>
