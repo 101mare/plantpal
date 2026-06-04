@@ -172,8 +172,12 @@ export function PlantdexPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {/* width:auto inline — .pp-input sets width:100%, which beats a `w-auto` class in the
+                cascade and would collapse the search field. Inline style wins, keeping the select
+                at content width so the search field can take the rest of the row. */}
             <select
-              className="pp-input w-auto shrink-0"
+              className="pp-input shrink-0"
+              style={{ width: "auto" }}
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
             >
