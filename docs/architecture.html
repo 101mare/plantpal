@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlantPal — Architektur-Dokumentation</title>
+    <style>
+      :root {
+        --bg: #0c1411;
+        --bg-2: #111d18;
+        --panel: #16241d;
+        --panel-2: #1d3027;
+        --border: #2c4a3a;
+        --green: #4f9d6e;
+        --green-bright: #6fce93;
+        --gold: #e0b53d;
+        --ink: #e8efe9;
+        --ink-dim: #a9bdb1;
+        --ink-faint: #7c9486;
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        --mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace, monospace;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 80px;
+      }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        background: radial-gradient(1200px 600px at 80% -10%, #15281f 0%, var(--bg) 55%);
+        color: var(--ink);
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--green-bright);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.88em;
+      }
+      code {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 0.08em 0.4em;
+        color: var(--green-bright);
+      }
+
+      /* ---- top nav ---- */
+      header.topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        backdrop-filter: blur(10px);
+        background: rgba(12, 20, 17, 0.82);
+        border-bottom: 1px solid var(--border);
+      }
+      .topbar-inner {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0.7rem 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .brand {
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        font-size: 1.05rem;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .brand .dot {
+        color: var(--green-bright);
+      }
+      .topbar nav {
+        display: flex;
+        gap: 1.1rem;
+        margin-left: auto;
+        flex-wrap: wrap;
+        font-size: 0.82rem;
+      }
+      .topbar nav a {
+        color: var(--ink-dim);
+      }
+      .topbar nav a:hover {
+        color: var(--gold);
+        text-decoration: none;
+      }
+      .badge {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        border: 1px solid var(--green);
+        color: var(--green-bright);
+        border-radius: 999px;
+        padding: 0.1rem 0.6rem;
+      }
+
+      /* ---- layout ---- */
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 1.5rem 5rem;
+      }
+      section {
+        padding: 3.2rem 0 1rem;
+        border-top: 1px solid transparent;
+      }
+      section + section {
+        border-top: 1px solid var(--border);
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: 1.75rem;
+        margin: 0 0 0.4rem;
+        display: flex;
+        align-items: baseline;
+        gap: 0.7rem;
+      }
+      h2 .num {
+        font-family: var(--mono);
+        font-size: 0.95rem;
+        color: var(--gold);
+        opacity: 0.85;
+      }
+      h3 {
+        font-size: 1.15rem;
+        color: var(--green-bright);
+        margin: 1.8rem 0 0.5rem;
+      }
+      .lead {
+        color: var(--ink-dim);
+        font-size: 1.02rem;
+        max-width: 70ch;
+      }
+      p {
+        max-width: 74ch;
+      }
+      .muted {
+        color: var(--ink-faint);
+      }
+
+      /* ---- hero ---- */
+      .hero {
+        padding: 4.5rem 0 2.5rem;
+        border: none;
+      }
+      .hero h1 {
+        font-size: 3rem;
+        margin: 0.3rem 0 0.6rem;
+        background: linear-gradient(120deg, var(--ink) 25%, var(--green-bright) 75%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .hero .sub {
+        font-size: 1.2rem;
+        color: var(--ink-dim);
+        max-width: 60ch;
+      }
+      .hero-meta {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        margin-top: 1.4rem;
+      }
+      .chip {
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        color: var(--ink-dim);
+        border-radius: 7px;
+        padding: 0.35rem 0.7rem;
+      }
+      .chip b {
+        color: var(--green-bright);
+      }
+
+      /* ---- cards ---- */
+      .grid {
+        display: grid;
+        gap: 1rem;
+        margin: 1.4rem 0;
+      }
+      .grid.c2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .grid.c3 {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .grid.c4 {
+        grid-template-columns: repeat(4, 1fr);
+      }
+      @media (max-width: 820px) {
+        .grid.c2,
+        .grid.c3,
+        .grid.c4 {
+          grid-template-columns: 1fr;
+        }
+        .hero h1 {
+          font-size: 2.2rem;
+        }
+      }
+      .card {
+        background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 1.1rem 1.2rem;
+        box-shadow: var(--shadow);
+      }
+      .card h4 {
+        margin: 0 0 0.35rem;
+        font-size: 0.98rem;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .card .ico {
+        font-size: 1.1rem;
+      }
+      .card p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--ink-dim);
+      }
+      .card .tag {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--gold);
+      }
+
+      /* ---- figure / diagrams ---- */
+      figure {
+        margin: 1.8rem 0;
+        background: var(--bg-2);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.4rem;
+        box-shadow: var(--shadow);
+        overflow-x: auto;
+      }
+      figure svg {
+        display: block;
+        margin: 0 auto;
+        max-width: 100%;
+        height: auto;
+      }
+      figcaption {
+        margin-top: 0.9rem;
+        font-size: 0.82rem;
+        color: var(--ink-faint);
+        text-align: center;
+      }
+      .svg-box {
+        fill: var(--panel-2);
+        stroke: var(--border);
+        stroke-width: 1.5;
+      }
+      .svg-box.accent {
+        stroke: var(--green);
+      }
+      .svg-box.gold {
+        stroke: var(--gold);
+      }
+      .svg-box.ext {
+        stroke: var(--ink-faint);
+        stroke-dasharray: 5 4;
+      }
+      .svg-t {
+        fill: var(--ink);
+        font-family: var(--sans);
+        font-size: 13px;
+      }
+      .svg-t.sm {
+        fill: var(--ink-dim);
+        font-size: 11px;
+      }
+      .svg-t.mono {
+        font-family: var(--mono);
+        fill: var(--green-bright);
+        font-size: 11px;
+      }
+      .svg-t.center {
+        text-anchor: middle;
+      }
+      .svg-arrow {
+        stroke: var(--green);
+        stroke-width: 1.8;
+        fill: none;
+      }
+      .svg-arrow.dim {
+        stroke: var(--ink-faint);
+        stroke-dasharray: 4 4;
+      }
+      .svg-lab {
+        fill: var(--ink-faint);
+        font-family: var(--mono);
+        font-size: 10px;
+        text-anchor: middle;
+      }
+
+      /* ---- tables ---- */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1.2rem 0;
+        font-size: 0.88rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--gold);
+        font-weight: 600;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      tr:hover td {
+        background: rgba(79, 157, 110, 0.06);
+      }
+      td .mono {
+        color: var(--green-bright);
+      }
+
+      /* ---- callouts ---- */
+      .note {
+        border-left: 3px solid var(--gold);
+        background: rgba(224, 181, 61, 0.07);
+        border-radius: 0 10px 10px 0;
+        padding: 0.8rem 1.1rem;
+        margin: 1.3rem 0;
+        font-size: 0.92rem;
+        color: var(--ink-dim);
+      }
+      .note.sec {
+        border-left-color: var(--green-bright);
+        background: rgba(111, 206, 147, 0.07);
+      }
+      .pill {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        padding: 0.12rem 0.5rem;
+        border-radius: 6px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--ink-dim);
+      }
+      ul.clean {
+        padding-left: 1.1rem;
+      }
+      ul.clean li {
+        margin: 0.35rem 0;
+        color: var(--ink-dim);
+      }
+      ul.clean li b {
+        color: var(--ink);
+      }
+      footer {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 3rem;
+        border-top: 1px solid var(--border);
+        color: var(--ink-faint);
+        font-size: 0.82rem;
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <span class="brand"><span class="dot">🌱</span> PlantPal</span>
+        <span class="badge">v3.0.0 · Architektur</span>
+        <nav>
+          <a href="#ueberblick">Überblick</a>
+          <a href="#architektur">System</a>
+          <a href="#stack">Stack</a>
+          <a href="#request">Request-Flow</a>
+          <a href="#auth">Auth</a>
+          <a href="#daten">Datenmodell</a>
+          <a href="#features">Features</a>
+          <a href="#security">Sicherheit</a>
+          <a href="#deploy">Deployment</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <!-- HERO -->
+      <section class="hero">
+        <span class="pill">Architektur-Dokumentation</span>
+        <h1>PlantPal</h1>
+        <p class="sub">
+          Ein self-hosted, einladungsbasierter Pflanzen-Gieß-Tracker im Pokédex-Stil. Jede
+          Pflanze ist ein Sammelkarten-Eintrag — mit Foto, Gieß-Intervall und abgestuftem
+          Durst-Status. Diese Doku erklärt, <b>wie</b> das System aufgebaut ist und
+          <b>warum</b> — ohne im Code zu versinken.
+        </p>
+        <div class="hero-meta">
+          <span class="chip"><b>Frontend</b> · React + TypeScript PWA</span>
+          <span class="chip"><b>Backend</b> · FastAPI + SQLite</span>
+          <span class="chip"><b>Deploy</b> · Docker + Cloudflare Tunnel</span>
+          <span class="chip"><b>Privacy</b> · 100 % lokal (außer E-Mail)</span>
+        </div>
+      </section>
+
+      <!-- ÜBERBLICK -->
+      <section id="ueberblick">
+        <h2><span class="num">01</span> Überblick</h2>
+        <p class="lead">
+          PlantPal hilft mehreren Haushalts-Nutzern, ihre Zimmerpflanzen rechtzeitig zu
+          gießen. Statt einer nüchternen To-do-Liste ist jede Pflanze ein „Plantdex"-Eintrag
+          mit pixeligem Foto. Wer Zugang will, braucht einen Einladungs-Link — es gibt keine
+          offene Registrierung.
+        </p>
+        <div class="grid c3">
+          <div class="card">
+            <h4><span class="ico">🪴</span> Plantdex</h4>
+            <p>Pflanzen anlegen, fotografieren, bearbeiten. Sortier-, Filter- und Suchfunktion.</p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">💧</span> Gieß-Tracking</h4>
+            <p>Ein Tipp markiert „gegossen". Eine Historie merkt sich jeden Gieß-Vorgang.</p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">📊</span> Statistik</h4>
+            <p>Gieß-Streak, Konsistenz, „am längsten überfällig", Durchschnitts-Intervalle.</p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">✉️</span> Erinnerungen</h4>
+            <p>Tägliche E-Mail-Digest zur selbst gewählten Uhrzeit, wenn Pflanzen durstig sind.</p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🎟️</span> Einladungen</h4>
+            <p>Jeder Nutzer hat ein Einladungs-Kontingent und erstellt Mehrfach-Links.</p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">📦</span> DSGVO-Export</h4>
+            <p>Jeder kann alle eigenen Daten als ZIP exportieren — inklusive Fotos.</p>
+          </div>
+        </div>
+        <div class="note">
+          <b>Designprinzip:</b> klein und wartbar. Eine flache Modul-Struktur, eine einzige
+          SQLite-Datei, keine externe Abhängigkeit außer einem E-Mail-Versender. Läuft auf
+          einem Raspberry Pi genauso wie in der Cloud.
+        </div>
+      </section>
+
+      <!-- SYSTEM-ARCHITEKTUR -->
+      <section id="architektur">
+        <h2><span class="num">02</span> System-Architektur</h2>
+        <p class="lead">
+          Vier Bausteine: die installierbare Web-App im Browser, ein verschlüsselter
+          Cloudflare-Tunnel als Eingangstür, der FastAPI-Server mit seiner SQLite-Datenbank,
+          und ein externer E-Mail-Dienst. Es sind <b>keine Ports nach außen offen</b> — der
+          Tunnel verbindet sich von innen heraus.
+        </p>
+        <figure>
+          <svg viewBox="0 0 900 380" role="img" aria-label="System-Architektur-Diagramm">
+            <!-- Browser -->
+            <rect class="svg-box accent" x="20" y="130" width="170" height="120" rx="12" />
+            <text class="svg-t center" x="105" y="158" font-weight="600">📱 Browser (PWA)</text>
+            <text class="svg-t sm center" x="105" y="180">React · TypeScript</text>
+            <text class="svg-t sm center" x="105" y="198">Service Worker</text>
+            <text class="svg-t sm center" x="105" y="216">Offline-Shell-Cache</text>
+            <text class="svg-t mono center" x="105" y="238">httpOnly-Cookie-Session</text>
+
+            <!-- Cloudflare -->
+            <rect class="svg-box gold" x="250" y="140" width="150" height="100" rx="12" />
+            <text class="svg-t center" x="325" y="170" font-weight="600">☁️ Cloudflare</text>
+            <text class="svg-t sm center" x="325" y="190">Tunnel (cloudflared)</text>
+            <text class="svg-t sm center" x="325" y="208">TLS am Edge</text>
+            <text class="svg-t mono center" x="325" y="228">keine offenen Ports</text>
+
+            <!-- FastAPI -->
+            <rect class="svg-box accent" x="460" y="110" width="190" height="160" rx="12" />
+            <text class="svg-t center" x="555" y="138" font-weight="600">⚙️ FastAPI-Server</text>
+            <text class="svg-t sm center" x="555" y="160">Middleware · Routes</text>
+            <text class="svg-t sm center" x="555" y="178">Service-Schicht</text>
+            <text class="svg-t sm center" x="555" y="196">APScheduler (Cron)</text>
+            <text class="svg-t sm center" x="555" y="214">Bild-Pipeline (Pillow)</text>
+            <text class="svg-t mono center" x="555" y="236">Python 3.12 · Uvicorn</text>
+            <text class="svg-t mono center" x="555" y="252">structlog (JSON)</text>
+
+            <!-- SQLite -->
+            <rect class="svg-box" x="710" y="60" width="160" height="90" rx="12" />
+            <text class="svg-t center" x="790" y="88" font-weight="600">🗄️ SQLite</text>
+            <text class="svg-t sm center" x="790" y="108">WAL-Modus</text>
+            <text class="svg-t mono center" x="790" y="128">eine Datei + Backups</text>
+
+            <!-- Images -->
+            <rect class="svg-box" x="710" y="170" width="160" height="70" rx="12" />
+            <text class="svg-t center" x="790" y="198" font-weight="600">🖼️ Bild-Ordner</text>
+            <text class="svg-t mono center" x="790" y="218">/user_id/plant_id.png</text>
+
+            <!-- Resend -->
+            <rect class="svg-box ext" x="460" y="300" width="190" height="60" rx="12" />
+            <text class="svg-t center" x="555" y="326" font-weight="600">📤 Resend (extern)</text>
+            <text class="svg-t sm center" x="555" y="344">transaktionale E-Mails</text>
+
+            <!-- arrows -->
+            <path class="svg-arrow" d="M190 190 H248" marker-end="url(#ah)" />
+            <path class="svg-arrow" d="M400 190 H458" marker-end="url(#ah)" />
+            <path class="svg-arrow" d="M650 150 Q685 120 708 105" marker-end="url(#ah)" />
+            <path class="svg-arrow" d="M650 205 H708" marker-end="url(#ah)" />
+            <path class="svg-arrow dim" d="M555 270 V298" marker-end="url(#ahd)" />
+            <text class="svg-lab" x="219" y="182">HTTPS</text>
+            <text class="svg-lab" x="429" y="182">localhost</text>
+            <text class="svg-lab" x="600" y="295">Magic-Link &amp; Digest</text>
+
+            <defs>
+              <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#4f9d6e" />
+              </marker>
+              <marker id="ahd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#7c9486" />
+              </marker>
+            </defs>
+          </svg>
+          <figcaption>
+            Abb. 1 — Topologie. Der Browser spricht nur mit Cloudflare; der Server hält die
+            einzige Verbindung nach außen (Resend) für E-Mails.
+          </figcaption>
+        </figure>
+      </section>
+
+      <!-- STACK -->
+      <section id="stack">
+        <h2><span class="num">03</span> Technologie-Stack</h2>
+        <p class="lead">
+          Bewusst schlank gewählt: etablierte Bausteine, wenig Magie, alles typisiert.
+        </p>
+        <div class="grid c2">
+          <div class="card">
+            <h4><span class="ico">🎨</span> Frontend</h4>
+            <p>
+              <span class="tag">React 18 + TypeScript</span> · Vite-Build · Tailwind v4
+              (Design-Tokens) · TanStack Query (Server-State &amp; Caching) · React Router ·
+              sonner (Toasts) · eigene, abhängigkeitsfreie i18n (DE/EN) · manuelle PWA
+              (Manifest + Service Worker).
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">⚙️</span> Backend</h4>
+            <p>
+              <span class="tag">Python 3.12 + FastAPI</span> · aiosqlite mit rohem,
+              parametrisiertem SQL · Pydantic v2 (zugleich DB-Mapping &amp; API-Schema) ·
+              APScheduler (stündlicher Cron) · Pillow (Bild-Pipeline) · structlog.
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🗄️</span> Daten &amp; Persistenz</h4>
+            <p>
+              <span class="tag">SQLite (WAL)</span> · nummerierte SQL-Migrationen in einer
+              <code>_migrations</code>-Tabelle · Soft-Delete · pro-Request-Verbindung für
+              Transaktions-Isolation · Berlin-Zeitzone, tag-genaue Logik.
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🚀</span> Betrieb</h4>
+            <p>
+              <span class="tag">Docker Compose</span> · Cloudflare Tunnel (kein offener Port)
+              · Resend für E-Mails · SQLite-Backups (Script / optionales Litestream-Profil) ·
+              health-Endpoint für Monitoring (z. B. UptimeRobot).
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- REQUEST FLOW -->
+      <section id="request">
+        <h2><span class="num">04</span> Lebenszyklus eines Requests</h2>
+        <p class="lead">
+          Jeder API-Aufruf durchläuft dieselben Schichten. Der Service-Worker lässt private
+          <code>/api</code>- und <code>/auth</code>-Anfragen bewusst ungecacht durch; der
+          Server prüft Herkunft, CSRF und Rate-Limit, bevor die eigentliche Logik läuft.
+        </p>
+        <figure>
+          <svg viewBox="0 0 880 250" role="img" aria-label="Request-Lebenszyklus">
+            <g>
+              <rect class="svg-box accent" x="10" y="95" width="120" height="60" rx="10" />
+              <text class="svg-t center" x="70" y="120">Service Worker</text>
+              <text class="svg-t sm center" x="70" y="138">/api,/auth: bypass</text>
+            </g>
+            <g>
+              <rect class="svg-box gold" x="160" y="95" width="120" height="60" rx="10" />
+              <text class="svg-t center" x="220" y="120">Cloudflare</text>
+              <text class="svg-t sm center" x="220" y="138">TLS-Terminierung</text>
+            </g>
+            <g>
+              <rect class="svg-box" x="310" y="80" width="135" height="90" rx="10" />
+              <text class="svg-t center" x="377" y="104">Middleware</text>
+              <text class="svg-t sm center" x="377" y="123">Origin-Check</text>
+              <text class="svg-t sm center" x="377" y="140">CSRF · Rate-Limit</text>
+              <text class="svg-t sm center" x="377" y="157">Request-Log</text>
+            </g>
+            <g>
+              <rect class="svg-box accent" x="475" y="80" width="135" height="90" rx="10" />
+              <text class="svg-t center" x="542" y="104">Route + Auth</text>
+              <text class="svg-t sm center" x="542" y="123">current_user</text>
+              <text class="svg-t sm center" x="542" y="140">Pydantic-Validierung</text>
+              <text class="svg-t sm center" x="542" y="157">user-scoped</text>
+            </g>
+            <g>
+              <rect class="svg-box" x="640" y="80" width="125" height="90" rx="10" />
+              <text class="svg-t center" x="702" y="104">Service</text>
+              <text class="svg-t sm center" x="702" y="123">Geschäftslogik</text>
+              <text class="svg-t sm center" x="702" y="140">Transaktion</text>
+            </g>
+            <g>
+              <rect class="svg-box" x="790" y="95" width="80" height="60" rx="10" />
+              <text class="svg-t center" x="830" y="120">SQLite</text>
+              <text class="svg-t sm center" x="830" y="138">pro Request</text>
+            </g>
+            <path class="svg-arrow" d="M130 125 H158" marker-end="url(#ah2)" />
+            <path class="svg-arrow" d="M280 125 H308" marker-end="url(#ah2)" />
+            <path class="svg-arrow" d="M445 125 H473" marker-end="url(#ah2)" />
+            <path class="svg-arrow" d="M610 125 H638" marker-end="url(#ah2)" />
+            <path class="svg-arrow" d="M765 125 H788" marker-end="url(#ah2)" />
+            <text class="svg-lab" x="60" y="205">Fehler werden zentral als</text>
+            <text class="svg-lab" x="60" y="220">{ error: { code, message } } · 4xx zurückgegeben</text>
+            <defs>
+              <marker id="ah2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#4f9d6e" />
+              </marker>
+            </defs>
+          </svg>
+          <figcaption>
+            Abb. 2 — Vom Browser zur Datenbank. Sicherheits-Checks zuerst, Logik zuletzt; jede
+            Anfrage bekommt in Produktion ihre eigene DB-Verbindung. Private <code>/api</code>-
+            und <code>/auth</code>-Aufrufe reicht der Service Worker unberührt durch (kein Cache).
+          </figcaption>
+        </figure>
+        <div class="note sec">
+          <b>Warum eine Verbindung pro Request?</b> SQLite teilt sonst eine Transaktion über
+          parallele Anfragen — ein Rollback der einen könnte Schreibvorgänge einer anderen
+          rückgängig machen. Eine frische Verbindung je Request isoliert das sauber.
+        </div>
+      </section>
+
+      <!-- AUTH -->
+      <section id="auth">
+        <h2><span class="num">05</span> Authentifizierung &amp; Einladungen</h2>
+        <p class="lead">
+          Passwortlos und einladungsbasiert. Zum Einloggen kommen <b>zwei</b> gleichwertige
+          Wege per E-Mail an: ein Magic-Link zum Klicken und ein 6-stelliger Code zum
+          Eintippen. Beide teilen denselben einmaligen Token.
+        </p>
+        <figure>
+          <svg viewBox="0 0 860 290" role="img" aria-label="Authentifizierungs-Flow">
+            <rect class="svg-box gold" x="20" y="20" width="160" height="60" rx="10" />
+            <text class="svg-t center" x="100" y="45" font-weight="600">🎟️ Einladung</text>
+            <text class="svg-t sm center" x="100" y="64">Nutzer erstellt Link</text>
+
+            <rect class="svg-box accent" x="240" y="20" width="170" height="60" rx="10" />
+            <text class="svg-t center" x="325" y="45" font-weight="600">📝 Registrierung</text>
+            <text class="svg-t sm center" x="325" y="64">E-Mail über Invite-Token</text>
+
+            <rect class="svg-box" x="470" y="20" width="170" height="60" rx="10" />
+            <text class="svg-t center" x="555" y="45" font-weight="600">✉️ E-Mail</text>
+            <text class="svg-t sm center" x="555" y="64">Magic-Link + 6-Code</text>
+
+            <rect class="svg-box accent" x="240" y="135" width="170" height="75" rx="10" />
+            <text class="svg-t center" x="325" y="160" font-weight="600">🔑 Verifikation</text>
+            <text class="svg-t sm center" x="325" y="179">Link klicken oder</text>
+            <text class="svg-t sm center" x="325" y="196">Code eingeben</text>
+
+            <rect class="svg-box gold" x="470" y="135" width="170" height="75" rx="10" />
+            <text class="svg-t center" x="555" y="160" font-weight="600">🍪 Session</text>
+            <text class="svg-t sm center" x="555" y="179">httpOnly-Cookie</text>
+            <text class="svg-t sm center" x="555" y="196">90 Tage, erneuert sich</text>
+
+            <rect class="svg-box ext" x="690" y="135" width="150" height="75" rx="10" />
+            <text class="svg-t center" x="765" y="160" font-weight="600">🛡️ Lockout</text>
+            <text class="svg-t sm center" x="765" y="179">5 Fehlversuche →</text>
+            <text class="svg-t sm center" x="765" y="196">Token verbrannt (423)</text>
+
+            <path class="svg-arrow" d="M180 50 H238" marker-end="url(#ah3)" />
+            <path class="svg-arrow" d="M410 50 H468" marker-end="url(#ah3)" />
+            <path class="svg-arrow" d="M505 80 Q400 104 342 133" marker-end="url(#ah3)" />
+            <path class="svg-arrow" d="M410 172 H468" marker-end="url(#ah3)" />
+            <path class="svg-arrow dim" d="M410 158 Q560 118 688 156" marker-end="url(#ah3)" />
+            <text class="svg-lab" x="300" y="118">Link / Code</text>
+            <text class="svg-lab" x="455" y="162">Erfolg</text>
+            <text class="svg-lab" x="565" y="112">5× falsch</text>
+            <defs>
+              <marker id="ah3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#4f9d6e" />
+              </marker>
+            </defs>
+          </svg>
+          <figcaption>
+            Abb. 3 — Vom Invite zur Session. Tokens, Codes und Sessions liegen niemals im
+            Klartext in der DB — nur als gepfefferter HMAC-Hash.
+          </figcaption>
+        </figure>
+        <div class="grid c3">
+          <div class="card">
+            <h4>🔗 Multi-Use-Links</h4>
+            <p>
+              Ein Invite kann mehrfach nutzbar sein; ein Kontingent pro Nutzer verhindert
+              unbegrenztes Einladen. Wer wen eingeladen hat, ist nachvollziehbar.
+            </p>
+          </div>
+          <div class="card">
+            <h4>🔁 Session-Erneuerung</h4>
+            <p>
+              Aktive Sessions verlängern sich automatisch (Soft-Cap 90 Tage, Hard-Cap 180),
+              ohne erneuten Login — bequem und trotzdem begrenzt.
+            </p>
+          </div>
+          <div class="card">
+            <h4>📧 E-Mail-Wechsel</h4>
+            <p>
+              Bestätigung an der <i>neuen</i> Adresse plus Hinweis an die alte; eine
+              Race-sichere Eindeutigkeitsprüfung verhindert Duplikate.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- DATENMODELL -->
+      <section id="daten">
+        <h2><span class="num">06</span> Datenmodell</h2>
+        <p class="lead">
+          Alles hängt an <code>users</code>. Pflanzen und ihre Gieß-Historie, Sessions,
+          Login-Tokens und Einladungen verweisen per Fremdschlüssel zurück — Löschen
+          kaskadiert sauber.
+        </p>
+        <figure>
+          <svg viewBox="0 0 880 420" role="img" aria-label="Entity-Relationship-Diagramm">
+            <!-- users center -->
+            <rect class="svg-box gold" x="350" y="20" width="180" height="92" rx="10" />
+            <text class="svg-t center" x="440" y="42" font-weight="700">users</text>
+            <line x1="350" y1="52" x2="530" y2="52" stroke="#2c4a3a" />
+            <text class="svg-t mono center" x="440" y="69">email · is_admin</text>
+            <text class="svg-t mono center" x="440" y="85">reminder_hour · locale</text>
+            <text class="svg-t mono center" x="440" y="101">theme · invite_quota</text>
+
+            <!-- plants -->
+            <rect class="svg-box accent" x="60" y="170" width="180" height="92" rx="10" />
+            <text class="svg-t center" x="150" y="192" font-weight="700">plants</text>
+            <line x1="60" y1="202" x2="240" y2="202" stroke="#2c4a3a" />
+            <text class="svg-t mono center" x="150" y="219">name · interval_days</text>
+            <text class="svg-t mono center" x="150" y="235">last_watered_at</text>
+            <text class="svg-t mono center" x="150" y="251">location_room · is_active</text>
+
+            <!-- waterings -->
+            <rect class="svg-box" x="60" y="300" width="180" height="70" rx="10" />
+            <text class="svg-t center" x="150" y="322" font-weight="700">waterings</text>
+            <line x1="60" y1="332" x2="240" y2="332" stroke="#2c4a3a" />
+            <text class="svg-t mono center" x="150" y="349">watered_at</text>
+            <text class="svg-t mono center" x="150" y="365">(Gieß-Historie)</text>
+
+            <!-- sessions -->
+            <rect class="svg-box" x="640" y="150" width="190" height="74" rx="10" />
+            <text class="svg-t center" x="735" y="172" font-weight="700">sessions</text>
+            <line x1="640" y1="182" x2="830" y2="182" stroke="#2c4a3a" />
+            <text class="svg-t mono center" x="735" y="199">session_hash (HMAC)</text>
+            <text class="svg-t mono center" x="735" y="215">expires_at</text>
+
+            <!-- login tokens -->
+            <rect class="svg-box" x="640" y="246" width="190" height="74" rx="10" />
+            <text class="svg-t center" x="735" y="268" font-weight="700">login_tokens</text>
+            <line x1="640" y1="278" x2="830" y2="278" stroke="#2c4a3a" />
+            <text class="svg-t mono center" x="735" y="295">token_hash · code_hash</text>
+            <text class="svg-t mono center" x="735" y="311">attempt_count</text>
+
+            <!-- invites -->
+            <rect class="svg-box accent" x="350" y="300" width="190" height="92" rx="10" />
+            <text class="svg-t center" x="445" y="322" font-weight="700">invite_tokens</text>
+            <line x1="350" y1="332" x2="540" y2="332" stroke="#2c4a3a" />
+            <text class="svg-t mono center" x="445" y="349">max_uses · used_count</text>
+            <text class="svg-t mono center" x="445" y="365">expires_at</text>
+            <text class="svg-t sm center" x="445" y="383">↳ invite_redemptions</text>
+
+            <!-- relations -->
+            <path class="svg-arrow" d="M350 95 Q250 120 180 168" marker-end="url(#ah4)" />
+            <path class="svg-arrow" d="M150 262 V298" marker-end="url(#ah4)" />
+            <path class="svg-arrow" d="M530 90 Q640 110 700 148" marker-end="url(#ah4)" />
+            <path class="svg-arrow" d="M530 100 Q650 200 700 244" marker-end="url(#ah4)" />
+            <path class="svg-arrow" d="M460 112 Q455 200 450 298" marker-end="url(#ah4)" />
+            <text class="svg-lab" x="250" y="135">1 : n</text>
+            <text class="svg-lab" x="170" y="285">1 : n</text>
+            <text class="svg-lab" x="620" y="120">1 : n</text>
+            <defs>
+              <marker id="ah4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#4f9d6e" />
+              </marker>
+            </defs>
+          </svg>
+          <figcaption>
+            Abb. 4 — Kern-Entitäten (vereinfacht). Weitere Tabellen:
+            <code>email_change_requests</code>, <code>reminder_send_log</code>,
+            <code>rate_limits</code>, <code>_migrations</code>.
+          </figcaption>
+        </figure>
+        <table>
+          <thead>
+            <tr>
+              <th>Tabelle</th>
+              <th>Zweck</th>
+              <th>Besonderheit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="mono">users</span></td>
+              <td>Konten &amp; Präferenzen</td>
+              <td>Sprache, Theme, Erinnerungs-Uhrzeit, Einladungs-Kontingent</td>
+            </tr>
+            <tr>
+              <td><span class="mono">plants</span></td>
+              <td>Pflanzen-Einträge</td>
+              <td>Soft-Delete via <span class="mono">is_active</span>, Foto auf der Platte</td>
+            </tr>
+            <tr>
+              <td><span class="mono">waterings</span></td>
+              <td>Gieß-Historie</td>
+              <td>jeder Gieß-Vorgang als Zeile, für Streak &amp; Konsistenz</td>
+            </tr>
+            <tr>
+              <td><span class="mono">login_tokens</span></td>
+              <td>Magic-Link + Code</td>
+              <td>beide als HMAC, gemeinsamer Lockout-Zähler</td>
+            </tr>
+            <tr>
+              <td><span class="mono">sessions</span></td>
+              <td>angemeldete Geräte</td>
+              <td>selbst-erneuernd, gehashter Token</td>
+            </tr>
+            <tr>
+              <td><span class="mono">invite_tokens</span></td>
+              <td>Einladungs-Links</td>
+              <td>Mehrfach-Nutzung, Kontingent-geprüft</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- FEATURES -->
+      <section id="features">
+        <h2><span class="num">07</span> Features im Detail</h2>
+        <h3>Abgestufter Durst-Status</h3>
+        <p>
+          Statt eines binären „durstig / nicht durstig" zeigt jede Karte einen von vier
+          Zuständen. Das Backend liefert tag-genau in Berlin-Zeit, <i>ob</i> eine Pflanze
+          durstig ist und um wie viele Tage sie überfällig ist; das Frontend leitet daraus
+          die vier Anzeige-Stufen ab:
+        </p>
+        <div class="grid c4">
+          <div class="card">
+            <h4><span style="color: #6fce93">●</span> Aktuell</h4>
+            <p>Noch ≥ 2 Tage Zeit. Dezenter grüner Punkt.</p>
+          </div>
+          <div class="card">
+            <h4><span style="color: #ffd84a">●</span> Bald fällig</h4>
+            <p>Morgen dran (noch ein Tag Puffer). Gelber Tropfen.</p>
+          </div>
+          <div class="card">
+            <h4><span style="color: #f59e3b">●</span> Fällig</h4>
+            <p>Heute fällig bis 3 Tage drüber. Oranger Badge mit Tageszahl.</p>
+          </div>
+          <div class="card">
+            <h4><span style="color: #ef6d5a">●</span> Stark überfällig</h4>
+            <p>4+ Tage drüber. Roter Badge — dringend gießen.</p>
+          </div>
+        </div>
+        <h3>Erinnerungen ohne Doppel-Mail</h3>
+        <p>
+          Ein stündlicher Cron prüft, welche Nutzer ihre gewählte Erinnerungs-Stunde erreicht
+          haben und durstige Pflanzen besitzen. Eine doppelte Absicherung
+          (<span class="mono">reminder_send_log</span> + Datums-Markierung) garantiert
+          <b>höchstens eine Mail pro Tag</b> — selbst über die Sommerzeit-Umstellung oder
+          nach einem Neustart.
+        </p>
+        <h3>Bilder als Pixel-Kunst</h3>
+        <p>
+          Hochgeladene Fotos werden serverseitig quadratisch zugeschnitten, auf 96 × 96 Pixel
+          verkleinert und per CSS pixelig gerendert — der charakteristische Retro-Look, ganz
+          ohne große Dateien.
+        </p>
+      </section>
+
+      <!-- SECURITY -->
+      <section id="security">
+        <h2><span class="num">08</span> Sicherheits- &amp; Privacy-Modell</h2>
+        <p class="lead">
+          Das System ist für genau diese Angriffsfläche gebaut — von zwei unabhängigen
+          Reviews (KI-Agenten + externes Modell) bestätigt: keine kritischen Lücken.
+        </p>
+        <div class="grid c2">
+          <div class="card">
+            <h4><span class="ico">🔐</span> Geheimnisse</h4>
+            <p>
+              Tokens, Codes und Sessions liegen nur als <b>gepfefferter HMAC-SHA256</b> in der
+              DB. Klartext existiert ausschließlich im Link bzw. Cookie des Nutzers.
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🛂</span> Zugriffs-Isolation</h4>
+            <p>
+              Jede Abfrage ist an die Nutzer-ID der Session gebunden. Niemand kann fremde
+              Pflanzen, Bilder, Einladungen oder Statistiken sehen (kein IDOR).
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🎫</span> CSRF</h4>
+            <p>
+              Double-Submit-Cookie plus <code>X-CSRF-Token</code>-Header auf allen
+              schreibenden Anfragen, dazu ein exakter Origin-Abgleich.
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">⏱️</span> Rate-Limiting</h4>
+            <p>
+              Login, Code-Prüfung, Registrierung, Einladungen, E-Mail-Wechsel, Upload und
+              Export sind gedrosselt — pro IP, E-Mail (gehasht) und Nutzer.
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🖼️</span> Upload-Härtung</h4>
+            <p>
+              Magic-Byte-Prüfung statt Dateiendung, Schutz vor Dekompressions-Bomben,
+              Metadaten-Entfernung, traversal-sichere Pfade, abgebrochen vor dem Vollpuffern.
+            </p>
+          </div>
+          <div class="card">
+            <h4><span class="ico">🔒</span> Privacy / lokal</h4>
+            <p>
+              Keine Telemetrie, keine CDNs — Schriften sind selbst gehostet. Einzige externe
+              Verbindung ist der E-Mail-Versand. DSGVO-Export ohne jegliche Geheimnisse.
+            </p>
+          </div>
+        </div>
+        <div class="note sec">
+          <b>Zwei-Reviewer-Prinzip:</b> Spezialisierte Agenten und ein unabhängiges
+          Drittmodell prüfen jeden Meilenstein. Gefundene Punkte (z. B. ein Lockout-Off-by-one
+          oder ein Upload-Speicher-Limit) wurden behoben und mit Tests abgesichert.
+        </div>
+      </section>
+
+      <!-- DEPLOYMENT -->
+      <section id="deploy">
+        <h2><span class="num">09</span> Betrieb &amp; Deployment</h2>
+        <p class="lead">
+          Ein <code>docker compose up</code> startet den Server und den Cloudflare-Tunnel.
+          Es muss kein Port in der Fritzbox geöffnet werden — der Tunnel baut die Verbindung
+          von innen auf, TLS endet bei Cloudflare.
+        </p>
+        <div class="grid c3">
+          <div class="card">
+            <h4>🐳 Container</h4>
+            <p>Ein App-Container (FastAPI + gebautes Frontend) + ein cloudflared-Container.</p>
+          </div>
+          <div class="card">
+            <h4>💾 Backups</h4>
+            <p>Konsistente SQLite-Kopie per Python-Backup-API; optionales Off-Site-Replikat (Litestream-Profil).</p>
+          </div>
+          <div class="card">
+            <h4>❤️ Health</h4>
+            <p>
+              <code>/api/health</code> meldet DB-Schreibbarkeit, WAL-Modus und Cron-Jobs —
+              ideal für UptimeRobot.
+            </p>
+          </div>
+        </div>
+        <div class="note">
+          <b>Skaliert mit:</b> SQLite + ein Prozess reichen für einen Haushalt oder kleinen
+          Freundeskreis locker. Wächst der Bedarf, sind die natürlichen nächsten Schritte ein
+          Litestream-Replikat und eine Aufteilung der Routen-Datei.
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>🌱 <b style="color: var(--ink)">PlantPal</b> · Architektur-Dokumentation · v3.0.0</span>
+      <span class="muted">Self-hosted · Invite-only · 100 % lokal außer E-Mail</span>
+    </footer>
+  </body>
+</html>
