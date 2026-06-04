@@ -5,26 +5,26 @@ services:
     env_file: .env
     volumes:
       - plantpal-data:/data
-    # Loopback-only mapping for host health checks; public traffic goes through Caddy.
-    ports:
-      - "127.0.0.1:8000:8000"
+    # No published host ports: Cloudflare Tunnel fronts the app over the compose
+    # network. (For a VPS with open 80/443 you can use the legacy Caddy setup instead,
+    # see Caddyfile + README.)
+    expose:
+      - "8000"
 
-  caddy:
-    image: caddy:2-alpine
+  # Cloudflare Tunnel: public ingress without router port-forwarding; TLS at the edge.
+  # Create a tunnel in the Cloudflare dashboard, route getplantpal.com -> http://plantpal:8000,
+  # and put its token in .env as CLOUDFLARE_TUNNEL_TOKEN.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
+    command: tunnel --no-autoupdate run
     environment:
-      - PLANTPAL_DOMAIN=${PLANTPAL_DOMAIN:-localhost}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - plantpal
 
-  # Off-site SQLite backup. Enable with: docker compose --profile backup up -d
+  # Off-site SQLite replication (optional). Enable with: docker compose --profile backup up -d
+  # The default backup path is the cron snapshot+rsync in scripts/backup.sh (K5).
   litestream:
     image: litestream/litestream:0.3
     restart: unless-stopped
@@ -37,5 +37,3 @@ services:
 
 volumes:
   plantpal-data:
-  caddy-data:
-  caddy-config:

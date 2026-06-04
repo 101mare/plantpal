@@ -17,7 +17,9 @@ from .db import init_db
 from .errors import AppError
 
 
-async def _maybe_send(settings, email: str, url: str, kind: str, send: bool) -> None:
+async def _maybe_send(
+    settings, email: str, url: str, kind: str, send: bool, code: str | None = None
+) -> None:
     """Best-effort email send; never fatal (the printed link always works)."""
     if not send:
         return
@@ -27,7 +29,7 @@ async def _maybe_send(settings, email: str, url: str, kind: str, send: bool) -> 
         if kind == "invite":
             await email_service.send_invite(settings, email, url)
         else:
-            await email_service.send_magic_link(settings, email, url)
+            await email_service.send_magic_link(settings, email, url, code)
         print("  (email sent)")
     except Exception as exc:  # noqa: BLE001 — operational tool, surface + continue
         print(f"  (email send failed: {exc} — use the link above)")
@@ -51,13 +53,15 @@ async def _issue_login_link(email: str, send: bool) -> int:
     settings = get_settings()
     db = await init_db(settings)
     try:
-        raw = await auth_service.request_login_link(db, settings, email)
-        if raw is None:
+        issued = await auth_service.request_login_link(db, settings, email)
+        if issued is None:
             print(f"No active user for {email!r}.", file=sys.stderr)
             return 1
+        raw, code = issued
         url = auth_service.login_url(settings, raw)
         print(f"Login link for {email}: {url}")
-        await _maybe_send(settings, email, url, "login", send)
+        print(f"Login code: {code}")
+        await _maybe_send(settings, email, url, "login", send, code)
         return 0
     finally:
         await db.close()
@@ -99,6 +103,36 @@ async def _revoke_sessions(email: str) -> int:
         await db.close()
 
 
+def _backup(out: str, db_path: str | None = None) -> int:
+    """Online, WAL-consistent SQLite backup via sqlite3.Connection.backup (K5: no sqlite3 CLI)."""
+    import sqlite3
+
+    src = sqlite3.connect(db_path or get_settings().DB_PATH)
+    try:
+        dest = sqlite3.connect(out)
+        try:
+            src.backup(dest)
+        finally:
+            dest.close()
+        print(f"Backup written to {out}")
+        return 0
+    finally:
+        src.close()
+
+
+async def _set_invite_quota(email: str, quota: int) -> int:
+    settings = get_settings()
+    db = await init_db(settings)
+    try:
+        if await auth_service.set_invite_quota(db, email, quota):
+            print(f"Set invite quota for {email} to {quota}.")
+            return 0
+        print(f"No user for {email!r}.", file=sys.stderr)
+        return 1
+    finally:
+        await db.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="plantpal", description="PlantPal admin CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +153,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("revoke-sessions", help="Force-logout all sessions of a user")
     p.add_argument("--email", required=True)
+
+    p = sub.add_parser("set-invite-quota", help="Set a user's invite quota")
+    p.add_argument("--email", required=True)
+    p.add_argument("--quota", type=int, required=True)
+
+    p = sub.add_parser("backup", help="Write a consistent SQLite backup to --out")
+    p.add_argument("--out", required=True)
     return parser
 
 
@@ -133,6 +174,10 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_create_invite(args.created_by, args.email_hint, args.send))
         if args.command == "revoke-sessions":
             return asyncio.run(_revoke_sessions(args.email))
+        if args.command == "set-invite-quota":
+            return asyncio.run(_set_invite_quota(args.email, args.quota))
+        if args.command == "backup":
+            return _backup(args.out)
     except AppError as exc:
         print(f"Error: {exc.message}", file=sys.stderr)
         return 1

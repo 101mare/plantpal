@@ -21,11 +21,23 @@ from .time_utils import now_berlin, to_iso, today_berlin
 Sender = Callable[[Settings, str, list[dict]], Awaitable[object]]
 
 
-async def _due_users(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
-    async with db.execute(
+async def _due_users(
+    db: aiosqlite.Connection,
+    reminder_hour: int | None = None,
+    max_hour: int | None = None,
+) -> list[aiosqlite.Row]:
+    sql = (
         "SELECT * FROM users WHERE email_reminders_enabled = 1 AND status = 'active' "
         "AND reminder_channel IN ('email', 'both')"
-    ) as cur:
+    )
+    params: list = []
+    if reminder_hour is not None:  # v3: exact-hour match (hourly cron)
+        sql += " AND reminder_hour = ?"
+        params.append(reminder_hour)
+    elif max_hour is not None:  # v3: reboot catch-up — hour already passed today
+        sql += " AND reminder_hour <= ?"
+        params.append(max_hour)
+    async with db.execute(sql, tuple(params)) as cur:
         return list(await cur.fetchall())
 
 
@@ -125,12 +137,19 @@ async def run_daily_reminders(
     settings: Settings,
     target_date: date | None = None,
     sender: Sender | None = None,
+    reminder_hour: int | None = None,
+    max_hour: int | None = None,
 ) -> dict[str, int]:
-    """Send digests to all due users for ``target_date`` (default: today Berlin)."""
+    """Send digests to due users for ``target_date`` (default: today Berlin).
+
+    v3: ``reminder_hour`` narrows to users whose chosen hour matches exactly (hourly
+    cron); ``max_hour`` narrows to users whose hour has already passed today (reboot
+    catch-up). Both None = all due users (M1 behaviour).
+    """
     target_date = target_date or today_berlin()
     results = {"sent": 0, "skipped": 0, "failed": 0}
     delay = 1.0 / settings.RESEND_RATE_PER_SEC if settings.RESEND_RATE_PER_SEC else 0
-    for i, user in enumerate(await _due_users(db)):
+    for i, user in enumerate(await _due_users(db, reminder_hour, max_hour)):
         if delay and i > 0:
             await asyncio.sleep(delay)  # pace sends to respect the Resend rate limit
         outcome = await send_user_digest(db, settings, user, target_date, sender)
@@ -138,13 +157,26 @@ async def run_daily_reminders(
     return results
 
 
+async def run_hourly_reminders(
+    db: aiosqlite.Connection, settings: Settings, now=None, sender: Sender | None = None
+) -> dict[str, int]:
+    """v3: hourly cron — serve users whose chosen reminder_hour == the current Berlin hour."""
+    moment = now or now_berlin()
+    return await run_daily_reminders(
+        db, settings, target_date=moment.date(), sender=sender, reminder_hour=moment.hour
+    )
+
+
 async def catch_up_missed(
     db: aiosqlite.Connection, settings: Settings, now=None, sender: Sender | None = None
 ) -> dict[str, int]:
-    """On startup, send any reminder that the scheduled run missed (e.g. Pi reboot)."""
+    """On startup, send today's reminder for users whose chosen hour has already passed.
+
+    v3: per-user ``reminder_hour`` aware — serves users with ``reminder_hour <= current
+    hour`` today; idempotency (reminder_send_log) prevents duplicates with the regular
+    hourly cron. The hourly cron stays the exact-hour path; this is the reboot net for today.
+    """
     moment = now or now_berlin()
-    if moment.hour < settings.REMINDER_HOUR_BERLIN:
-        target = moment.date() - timedelta(days=1)
-    else:
-        target = moment.date()
-    return await run_daily_reminders(db, settings, target, sender)
+    return await run_daily_reminders(
+        db, settings, target_date=moment.date(), sender=sender, max_hour=moment.hour
+    )

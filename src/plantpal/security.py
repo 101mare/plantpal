@@ -35,6 +35,13 @@ def hash_ip(ip: str | None) -> str:
     return hashlib.sha256(ip.encode()).hexdigest()[:32]
 
 
+def hash_email_for_log(email: str, settings: Settings) -> str:
+    """Keyed short hash of an email for structured logs (no raw PII, no '@')."""
+    return hmac.new(
+        settings.TOKEN_PEPPER.encode(), normalize_email(email).encode(), hashlib.sha256
+    ).hexdigest()[:12]
+
+
 # --- CSRF: signed double-submit token bound to the session ---
 
 

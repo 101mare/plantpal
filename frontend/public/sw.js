@@ -1,0 +1,71 @@
+// PlantPal service worker.
+// App-shell precache for offline launch; NetworkOnly for /api + /auth so private
+// API/auth responses are NEVER cached (consolidation decision K7).
+const CACHE = "plantpal-shell-v1";
+const SHELL = [
+  "/",
+  "/index.html",
+  "/vines.png",
+  "/placeholder.png",
+  "/manifest.webmanifest",
+  "/fonts/press-start-2p-latin.woff2",
+  "/fonts/vt323-latin.woff2",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(SHELL))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== "GET") return; // never touch mutations
+  // K7: private API/auth traffic must bypass the cache entirely.
+  if (url.pathname.startsWith("/api") || url.pathname.startsWith("/auth")) return;
+  // HTML navigations: network-first so a fresh deploy's shell (and its new JS bundle) is
+  // picked up when online; fall back to the cached shell offline (A11Y-07: no stale pinning).
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((resp) => {
+          const isHtml = (resp.headers.get("Content-Type") || "").includes("text/html");
+          if (resp.ok && url.origin === self.location.origin && isHtml) {
+            const copy = resp.clone();
+            caches.open(CACHE).then((c) => c.put("/", copy));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(event.request).then((hit) => hit || caches.match("/"))),
+    );
+    return;
+  }
+  // Other same-origin static assets: cache-first, fall back to network, then to "/".
+  event.respondWith(
+    caches.match(event.request).then(
+      (hit) =>
+        hit ||
+        fetch(event.request)
+          .then((resp) => {
+            if (resp.ok && url.origin === self.location.origin) {
+              const copy = resp.clone();
+              caches.open(CACHE).then((c) => c.put(event.request, copy));
+            }
+            return resp;
+          })
+          .catch(() => caches.match("/")),
+    ),
+  );
+});

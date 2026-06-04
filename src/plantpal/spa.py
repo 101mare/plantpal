@@ -23,9 +23,13 @@ def mount_spa(app: FastAPI, static_dir: str) -> None:
     if assets.is_dir():
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
+    root_resolved = root.resolve()
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str) -> FileResponse:
-        candidate = root / full_path
-        if full_path and candidate.is_file():
+        # Defense-in-depth: resolve and confirm the candidate stays within the static root
+        # before serving it, so no normalized path can escape via traversal (SEC-04).
+        candidate = (root / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(root_resolved):
             return FileResponse(candidate)
         return FileResponse(index)

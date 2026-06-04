@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 import filetype
+from fastapi import UploadFile
 
 from .config import Settings
 from .errors import (
@@ -32,6 +33,20 @@ def _storage_path(settings: Settings, user_id: int, plant_id: int) -> Path:
     if not str(target).startswith(str(base) + os.sep):
         raise UnprocessableError("Invalid storage path.")
     return target
+
+
+async def read_upload_limited(image: UploadFile, settings: Settings) -> bytes:
+    """Read an UploadFile in 64 KB chunks, aborting once it exceeds the size cap — so an
+    oversized upload is rejected before the whole body is buffered into memory (DoS guard)."""
+    max_bytes = settings.IMG_MAX_UPLOAD_MB * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await image.read(64 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise PayloadTooLargeError(f"Image exceeds {settings.IMG_MAX_UPLOAD_MB} MB.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _process_sync(raw: bytes, size: int, max_pixels: int) -> bytes:

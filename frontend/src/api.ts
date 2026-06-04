@@ -1,4 +1,12 @@
-import type { Me, Plant, Stats, UserSettings } from "./types";
+import type {
+  InviteCreated,
+  InviteListItem,
+  Me,
+  Plant,
+  SettingsPatch,
+  Stats,
+  UserSettings,
+} from "./types";
 
 export class ApiError extends Error {
   code: string;
@@ -51,32 +59,41 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+type PlantPatch = Partial<
+  Pick<Plant, "name" | "interval_days" | "notes" | "water_amount_ml" | "location_room">
+>;
+
 export const api = {
   me: () => request<Me>("GET", "/api/me"),
   requestLogin: (email: string) => request("POST", "/auth/request-login", { email }),
+  verifyCode: (email: string, code: string) =>
+    request("POST", "/auth/verify-code", { email, code }),
   register: (invite_token: string, email: string) =>
     request("POST", "/auth/register", { invite_token, email }),
   logout: () => request("POST", "/auth/logout"),
 
   listPlants: () => request<{ items: Plant[] }>("GET", "/api/plants").then((r) => r.items),
   createPlant: (form: FormData) => request<Plant>("POST", "/api/plants", form),
-  updatePlant: (
-    id: number,
-    patch: Partial<Pick<Plant, "name" | "interval_days" | "notes" | "water_amount_ml">>,
-  ) => request<Plant>("PATCH", `/api/plants/${id}`, patch),
+  updatePlant: (id: number, patch: PlantPatch) =>
+    request<Plant>("PATCH", `/api/plants/${id}`, patch),
   deletePlant: (id: number) => request("DELETE", `/api/plants/${id}`),
   waterPlant: (id: number) => request<Plant>("POST", `/api/plants/${id}/water`),
   uploadImage: (id: number, form: FormData) =>
     request<{ image_url: string }>("POST", `/api/plants/${id}/image`, form),
 
   getSettings: () => request<UserSettings>("GET", "/api/settings"),
-  updateSettings: (email_reminders_enabled: boolean) =>
-    request("PATCH", "/api/settings", { email_reminders_enabled }),
+  updateSettings: (patch: SettingsPatch) => request("PATCH", "/api/settings", patch),
   getStats: () => request<Stats>("GET", "/api/stats"),
   deleteAccount: () => request("DELETE", "/api/account"),
+  exportUrl: () => "/api/account/export",
 
-  createInvite: (email_hint?: string) =>
-    request<{ invite_url: string; expires_at: string }>("POST", "/api/admin/invites", {
-      email_hint: email_hint ?? null,
-    }),
+  // user invites (quota-checked, multi-use)
+  listInvites: () =>
+    request<{ items: InviteListItem[] }>("GET", "/api/invites").then((r) => r.items),
+  createUserInvite: (max_uses: number, expires_in_days?: number) =>
+    request<InviteCreated>("POST", "/api/invites", { max_uses, expires_in_days }),
+  revokeInvite: (id: number) => request("POST", `/api/invites/${id}/revoke`),
+
+  // email change
+  requestEmailChange: (new_email: string) => request("POST", "/api/account/email", { new_email }),
 };

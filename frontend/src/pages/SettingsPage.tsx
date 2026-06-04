@@ -1,102 +1,271 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, ApiError } from "../api";
-import { useMe } from "../App";
+import { api } from "../api";
+import { useI18n, errorText } from "../i18n";
+import { useTheme } from "../theme";
+import { Backdrop } from "../components/AddPlantModal";
+import type { Locale, Theme } from "../types";
 
 export function SettingsPage() {
+  const { t, locale, setLocale } = useI18n();
+  const { theme, setTheme } = useTheme();
   const qc = useQueryClient();
-  const navigate = useNavigate();
-  const { data: me } = useMe();
-  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
+  const nav = useNavigate();
+  const { data: s } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
+  const { data: invites } = useQuery({ queryKey: ["invites"], queryFn: api.listInvites });
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [confirmDel, setConfirmDel] = useState(false);
+  const onErr = (e: unknown) => toast.error(errorText(e, t));
 
-  const toggle = useMutation({
-    mutationFn: (enabled: boolean) => api.updateSettings(enabled),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Fehler."),
+  const patch = useMutation({
+    mutationFn: api.updateSettings,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      toast.success(t("settings.saved"));
+    },
+    onError: onErr,
   });
-
   const logout = useMutation({
     mutationFn: api.logout,
     onSuccess: () => {
       qc.clear();
-      navigate("/login");
+      nav("/login");
     },
+    onError: onErr,
   });
-
-  const invite = useMutation({
-    mutationFn: () => api.createInvite(),
-    onSuccess: (r) => setInviteUrl(r.invite_url),
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Fehler."),
-  });
-
   const removeAccount = useMutation({
     mutationFn: api.deleteAccount,
     onSuccess: () => {
       qc.clear();
-      navigate("/login");
+      nav("/login");
     },
+    onError: onErr,
   });
+  const createInvite = useMutation({
+    mutationFn: () => api.createUserInvite(1),
+    onSuccess: (r) => {
+      setInviteUrl(r.invite_url);
+      qc.invalidateQueries({ queryKey: ["invites"] });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: onErr,
+  });
+  const revoke = useMutation({
+    mutationFn: (id: number) => api.revokeInvite(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invites"] });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: onErr,
+  });
+  const changeEmail = useMutation({
+    mutationFn: () => api.requestEmailChange(newEmail),
+    onSuccess: () => {
+      toast.success(t("settings.emailChangeSent"));
+      setNewEmail("");
+    },
+    onError: onErr,
+  });
+
+  function pickLocale(l: Locale) {
+    const prev = locale;
+    setLocale(l);
+    patch.mutate({ locale: l }, { onError: () => setLocale(prev) });
+  }
+  function pickTheme(th: Theme) {
+    const prev = theme;
+    setTheme(th);
+    patch.mutate({ theme: th }, { onError: () => setTheme(prev) });
+  }
 
   return (
     <div className="mx-auto max-w-md p-4">
       <header className="mb-6 flex items-center justify-between">
-        <h1 className="pp-heading text-lg">Settings</h1>
+        <h1 className="pp-heading text-lg" tabIndex={-1}>
+          {t("settings.title")}
+        </h1>
         <Link to="/" className="pp-btn">
-          Zurück
+          {t("nav.back")}
         </Link>
       </header>
 
-      <div className="pp-frame mb-4 p-4 text-xs">
-        <p className="mb-3 opacity-80">Angemeldet als {settings?.email}</p>
+      <Section title={t("settings.account")}>
+        <p className="mb-3 break-all opacity-80">{s?.email}</p>
+        <details>
+          <summary className="cursor-pointer text-pp-gold">{t("settings.changeEmail")}</summary>
+          <div className="mt-2 flex flex-col gap-2">
+            <input
+              type="email"
+              className="pp-input"
+              placeholder={t("settings.newEmail")}
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+            />
+            <button
+              type="button"
+              className="pp-btn"
+              disabled={!newEmail || changeEmail.isPending}
+              onClick={() => changeEmail.mutate()}
+            >
+              {t("settings.sendVerify")}
+            </button>
+          </div>
+        </details>
+      </Section>
+
+      <Section title={t("settings.emailReminders")}>
         <label className="flex items-center justify-between gap-3">
-          Email-Reminder
+          {t("settings.emailReminders")}
           <input
             type="checkbox"
-            checked={settings?.email_reminders_enabled ?? false}
-            onChange={(e) => toggle.mutate(e.target.checked)}
-            className="h-5 w-5"
+            className="h-6 w-6"
+            checked={s?.email_reminders_enabled ?? false}
+            onChange={(e) => patch.mutate({ email_reminders_enabled: e.target.checked })}
           />
         </label>
-      </div>
+        <label className="mt-3 flex items-center justify-between gap-3">
+          {t("settings.reminderHour")}
+          <input
+            type="number"
+            min={0}
+            max={23}
+            inputMode="numeric"
+            className="pp-input w-20"
+            key={s?.reminder_hour ?? 8}
+            defaultValue={s?.reminder_hour ?? 8}
+            onBlur={(e) => {
+              const h = Number(e.target.value);
+              if (Number.isInteger(h) && h >= 0 && h <= 23) patch.mutate({ reminder_hour: h });
+              else e.target.value = String(s?.reminder_hour ?? 8); // reject NaN/out-of-range
+            }}
+          />
+        </label>
+      </Section>
 
-      {me?.is_admin && (
-        <div className="pp-frame mb-4 p-4 text-xs">
-          <h2 className="pp-heading mb-2 text-xs">Einladungen</h2>
-          <button
-            className="pp-btn w-full"
-            onClick={() => invite.mutate()}
-            disabled={invite.isPending}
+      <Section title={`${t("settings.language")} / ${t("settings.theme")}`}>
+        <div className="flex items-center justify-between gap-3">
+          {t("settings.language")}
+          <select
+            className="pp-input w-auto"
+            value={locale}
+            onChange={(e) => pickLocale(e.target.value as Locale)}
           >
-            Invite-Link generieren
-          </button>
-          {inviteUrl && (
+            <option value="de">Deutsch</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          {t("settings.theme")}
+          <select
+            className="pp-input w-auto"
+            value={theme}
+            onChange={(e) => pickTheme(e.target.value as Theme)}
+          >
+            <option value="dark">{t("settings.theme.dark")}</option>
+            <option value="light">{t("settings.theme.light")}</option>
+          </select>
+        </div>
+      </Section>
+
+      <Section title={t("settings.invites")}>
+        <p className="mb-2 opacity-70">{t("settings.inviteQuota", { n: s?.invite_quota ?? 0 })}</p>
+        <button
+          type="button"
+          className="pp-btn w-full"
+          disabled={createInvite.isPending}
+          onClick={() => createInvite.mutate()}
+        >
+          {t("settings.createInvite")}
+        </button>
+        {inviteUrl && (
+          <div className="mt-2 flex gap-2">
             <input
               readOnly
               value={inviteUrl}
               onFocus={(e) => e.target.select()}
-              className="mt-3 w-full rounded border-2 border-pp-border bg-pp-panel-2 p-2 text-[10px]"
+              className="pp-input flex-1 text-[10px]"
             />
-          )}
-        </div>
-      )}
+            <button
+              type="button"
+              className="pp-btn"
+              onClick={() => {
+                navigator.clipboard?.writeText(inviteUrl);
+                toast.success(t("settings.copied"));
+              }}
+            >
+              {t("settings.copy")}
+            </button>
+          </div>
+        )}
+        <ul className="mt-3 flex flex-col gap-1">
+          {(invites ?? []).map((inv) => (
+            <li key={inv.id} className="flex items-center justify-between gap-2 text-[10px]">
+              <span>
+                {inv.used_count}/{inv.max_uses} {t("settings.inviteUses")} · {inv.status}
+              </span>
+              {inv.status === "active" && (
+                <button type="button" className="underline" onClick={() => revoke.mutate(inv.id)}>
+                  {t("settings.revoke")}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </Section>
 
       <div className="flex flex-col gap-2">
-        <button className="pp-btn" onClick={() => logout.mutate()}>
-          Logout
+        <a href={api.exportUrl()} className="pp-btn text-center" download>
+          {t("settings.export")}
+        </a>
+        <button
+          type="button"
+          className="pp-btn"
+          disabled={logout.isPending}
+          onClick={() => logout.mutate()}
+        >
+          {logout.isPending ? "…" : t("settings.logout")}
         </button>
         <button
+          type="button"
           className="pp-btn"
           style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
-          onClick={() => {
-            if (confirm("Account und alle Pflanzen endgültig löschen?")) removeAccount.mutate();
-          }}
+          onClick={() => setConfirmDel(true)}
         >
-          Account löschen
+          {t("settings.deleteAccount")}
         </button>
       </div>
+
+      {confirmDel && (
+        <Backdrop onClose={() => setConfirmDel(false)}>
+          <p className="mb-4 text-center text-sm">{t("settings.deleteConfirm")}</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="pp-btn flex-1"
+              style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
+              disabled={removeAccount.isPending}
+              onClick={() => removeAccount.mutate()}
+            >
+              {t("settings.deleteAccount")}
+            </button>
+            <button type="button" className="pp-btn flex-1" onClick={() => setConfirmDel(false)}>
+              {t("plant.cancel")}
+            </button>
+          </div>
+        </Backdrop>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="pp-frame mb-4 p-4 text-xs">
+      <h2 className="pp-heading mb-2 text-xs">{title}</h2>
+      {children}
     </div>
   );
 }

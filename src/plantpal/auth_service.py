@@ -7,6 +7,8 @@ race-safe via a conditional ``UPDATE ... WHERE used_at IS NULL`` + rowcount chec
 
 from __future__ import annotations
 
+import contextlib
+import secrets
 import sqlite3
 from datetime import timedelta
 
@@ -14,6 +16,7 @@ import aiosqlite
 
 from .config import Settings
 from .errors import (
+    AppError,
     ConflictError,
     ForbiddenError,
     TokenExpiredError,
@@ -21,7 +24,7 @@ from .errors import (
     TokenUsedError,
 )
 from .models import SessionUser
-from .security import hash_token, new_url_token, normalize_email
+from .security import constant_time_equal, hash_token, new_url_token, normalize_email
 from .time_utils import from_iso, now_berlin, to_iso
 
 # --- URL builders ---
@@ -50,19 +53,32 @@ async def get_user_by_id(db: aiosqlite.Connection, user_id: int) -> aiosqlite.Ro
         return await cur.fetchone()
 
 
+def _generate_code() -> str:
+    """A zero-padded 6-digit numeric login code (F-AUTH-25)."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
 async def _issue_login_token(
     db: aiosqlite.Connection, settings: Settings, user_id: int, email: str
-) -> str:
-    """Insert a fresh login token (no commit). Returns the plaintext token."""
+) -> tuple[str, str]:
+    """Insert a fresh login token + 6-digit code (both hashed; no commit). Returns (raw, code)."""
     raw = new_url_token()
+    code = _generate_code()
     now = now_berlin()
     expires = now + timedelta(minutes=settings.LOGIN_TOKEN_TTL_MIN)
     await db.execute(
-        "INSERT INTO login_tokens (token_hash, email, user_id, created_at, expires_at) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (hash_token(raw, settings), normalize_email(email), user_id, to_iso(now), to_iso(expires)),
+        "INSERT INTO login_tokens (token_hash, code_hash, email, user_id, created_at, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            hash_token(raw, settings),
+            hash_token(code, settings),
+            normalize_email(email),
+            user_id,
+            to_iso(now),
+            to_iso(expires),
+        ),
     )
-    return raw
+    return raw, code
 
 
 # --- Magic-link request ---
@@ -70,18 +86,23 @@ async def _issue_login_token(
 
 async def request_login_link(
     db: aiosqlite.Connection, settings: Settings, email: str
-) -> str | None:
-    """Create a login token for an existing active user. Returns plaintext token or None.
+) -> tuple[str, str] | None:
+    """Create a login token + 6-digit code for an active user. Returns (raw_token, code) or None.
 
-    Returning None for unknown/disabled users lets the route give a generic
+    None for unknown/disabled users lets the route give a generic
     (enumeration-resistant) response.
     """
     user = await get_user_by_email(db, email)
     if user is None or user["status"] != "active":
         return None
-    raw = await _issue_login_token(db, settings, user["id"], email)
+    # invalidate older open tokens so only the newest code is valid (F-AUTH-19)
+    await db.execute(
+        "UPDATE login_tokens SET used_at = ? WHERE email = ? AND used_at IS NULL",
+        (to_iso(now_berlin()), normalize_email(email)),
+    )
+    raw, code = await _issue_login_token(db, settings, user["id"], email)
     await db.commit()
-    return raw
+    return raw, code
 
 
 # --- Magic-link verify (race-safe single-use) ---
@@ -130,22 +151,28 @@ async def verify_login(
 
 async def register_with_invite(
     db: aiosqlite.Connection, settings: Settings, invite_raw: str, email: str
-) -> str:
-    """Validate invite, create user, return a plaintext login token for first login."""
+) -> tuple[str, str]:
+    """Validate a multi-use invite, create the user, record the redemption (F-AUTH-16/17).
+
+    Returns (raw_login_token, code). ``used_at`` is set once the link is exhausted
+    (``used_count == max_uses``) — backward-compatible with the M1 single-use semantics.
+    """
     email = normalize_email(email)
     invite_hash = hash_token(invite_raw, settings)
-    now = now_berlin()
+    now_iso = to_iso(now_berlin())
     async with db.execute(
         "SELECT * FROM invite_tokens WHERE token_hash = ?", (invite_hash,)
     ) as cur:
         inv = await cur.fetchone()
 
-    if inv is None or inv["revoked_at"] is not None:
-        raise TokenInvalidError("Invalid invite.")
-    if inv["used_at"] is not None:
-        raise TokenUsedError("This invite has already been used.")
-    if from_iso(inv["expires_at"]) <= now:
-        raise TokenExpiredError("This invite has expired.")
+    if inv is None:
+        raise TokenInvalidError("Invalid invite.", code="invalid_invite")
+    if inv["revoked_at"] is not None:
+        raise ConflictError("This invite was revoked.", code="invite_revoked")
+    if from_iso(inv["expires_at"]) <= now_berlin():
+        raise TokenExpiredError("This invite has expired.", code="invite_expired")
+    if inv["used_count"] >= inv["max_uses"]:
+        raise ConflictError("This invite is used up.", code="invite_exhausted")
     if await get_user_by_email(db, email) is not None:
         raise ConflictError(
             "This email already has an account. Sign in instead.", code="user_exists"
@@ -154,28 +181,33 @@ async def register_with_invite(
     try:
         cursor = await db.execute(
             "INSERT INTO users (email, is_admin, created_at) VALUES (?, 0, ?)",
-            (email, to_iso(now)),
+            (email, now_iso),
         )
     except sqlite3.IntegrityError as exc:
-        # Concurrent registration won the UNIQUE(email) race — surface as a clean 409.
         await db.rollback()
         raise ConflictError(
             "This email already has an account. Sign in instead.", code="user_exists"
         ) from exc
     user_id = cursor.lastrowid
 
+    # Atomic consume: only succeeds while a seat is free (race-safe via rowcount).
     consumed = await db.execute(
-        "UPDATE invite_tokens SET used_at = ?, used_by_user_id = ? "
-        "WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
-        (to_iso(now), user_id, inv["id"], to_iso(now)),
+        "UPDATE invite_tokens SET used_count = used_count + 1, "
+        "used_at = CASE WHEN used_count + 1 >= max_uses THEN ? ELSE used_at END, "
+        "used_by_user_id = ? "
+        "WHERE id = ? AND revoked_at IS NULL AND expires_at > ? AND used_count < max_uses",
+        (now_iso, user_id, inv["id"], now_iso),
     )
     if consumed.rowcount != 1:
-        await db.rollback()
-        raise TokenUsedError("This invite has already been used.")
-
-    raw = await _issue_login_token(db, settings, user_id, email)
+        await db.rollback()  # lost the last-seat race
+        raise ConflictError("This invite is used up.", code="invite_exhausted")
+    await db.execute(
+        "INSERT INTO invite_redemptions (invite_id, user_id, redeemed_at) VALUES (?, ?, ?)",
+        (inv["id"], user_id, now_iso),
+    )
+    raw, code = await _issue_login_token(db, settings, user_id, email)
     await db.commit()
-    return raw
+    return raw, code
 
 
 # --- Sessions ---
@@ -284,15 +316,25 @@ async def create_invite(
     settings: Settings,
     created_by_user_id: int | None,
     email_hint: str | None = None,
+    max_uses: int = 1,
+    expires_in_days: int | None = None,
 ) -> str:
+    """Create an invite (admin/CLI path, no quota check). max_uses=1 = M1 single-use."""
     raw = new_url_token()
     now = now_berlin()
-    expires = now + timedelta(days=settings.INVITE_TOKEN_TTL_DAYS)
+    ttl = expires_in_days if expires_in_days is not None else settings.INVITE_TOKEN_TTL_DAYS
+    expires = now + timedelta(days=ttl)
     await db.execute(
-        "INSERT INTO invite_tokens "
-        "(token_hash, email_hint, created_by_user_id, created_at, expires_at) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (hash_token(raw, settings), email_hint, created_by_user_id, to_iso(now), to_iso(expires)),
+        "INSERT INTO invite_tokens (token_hash, email_hint, created_by_user_id, created_at, "
+        "expires_at, max_uses, used_count) VALUES (?, ?, ?, ?, ?, ?, 0)",
+        (
+            hash_token(raw, settings),
+            email_hint,
+            created_by_user_id,
+            to_iso(now),
+            to_iso(expires),
+            max_uses,
+        ),
     )
     await db.commit()
     return raw
@@ -328,9 +370,303 @@ async def bootstrap_admin(
             await db.execute(
                 "UPDATE users SET is_admin = 1, status = 'active' WHERE id = ?", (user_id,)
             )
-        raw = await _issue_login_token(db, settings, user_id, email)
+        raw, _code = await _issue_login_token(db, settings, user_id, email)
         await db.execute("COMMIT")
         return user_id, raw
     except BaseException:
         await db.execute("ROLLBACK")
         raise
+
+
+# --- v3: 6-digit login-code verify (F-AUTH-21..25) ---
+
+
+async def verify_login_code(
+    db: aiosqlite.Connection, settings: Settings, email: str, code: str
+) -> tuple[str, SessionUser]:
+    """Verify a 6-digit code and open a session. Generic failures (no enumeration)."""
+    email = normalize_email(email)
+    now = now_berlin()
+    async with db.execute(
+        "SELECT * FROM login_tokens WHERE email = ? AND used_at IS NULL AND code_hash IS NOT NULL "
+        "ORDER BY created_at DESC LIMIT 1",
+        (email,),
+    ) as cur:
+        tok = await cur.fetchone()
+    if tok is None:
+        raise TokenInvalidError("Invalid code.", code="invalid_code")
+    if tok["attempt_count"] >= settings.LOGIN_CODE_MAX_ATTEMPTS:
+        # lockout reached: burn the token (link included) and refuse further tries (F-AUTH-23)
+        await db.execute(
+            "UPDATE login_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL",
+            (to_iso(now), tok["id"]),
+        )
+        await db.commit()
+        raise AppError(
+            "Too many attempts. Request a new code.", code="code_locked", status_code=423
+        )
+    if from_iso(tok["created_at"]) + timedelta(minutes=settings.LOGIN_CODE_TTL_MIN) <= now:
+        raise TokenExpiredError("This code has expired.", code="code_expired")
+    if not constant_time_equal(hash_token(code, settings), tok["code_hash"]):
+        new_count = tok["attempt_count"] + 1
+        if new_count >= settings.LOGIN_CODE_MAX_ATTEMPTS:
+            # final wrong attempt: burn the token (magic link included) + lock out now (F-AUTH-23),
+            # rather than leaving the link usable until a 6th try arrives.
+            await db.execute(
+                "UPDATE login_tokens SET attempt_count = ?, used_at = ? WHERE id = ?",
+                (new_count, to_iso(now), tok["id"]),
+            )
+            await db.commit()
+            raise AppError(
+                "Too many attempts. Request a new code.", code="code_locked", status_code=423
+            )
+        await db.execute(
+            "UPDATE login_tokens SET attempt_count = ? WHERE id = ?", (new_count, tok["id"])
+        )
+        await db.commit()
+        raise TokenInvalidError("Invalid code.", code="invalid_code")
+
+    user = await get_user_by_id(db, tok["user_id"])
+    if user is None:
+        raise TokenInvalidError("Invalid code.", code="invalid_code")
+    if user["status"] != "active":
+        raise ForbiddenError("This account is disabled.", code="user_disabled")
+    consumed = await db.execute(
+        "UPDATE login_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL",
+        (to_iso(now), tok["id"]),
+    )
+    if consumed.rowcount != 1:
+        await db.rollback()
+        raise TokenInvalidError("Invalid code.", code="invalid_code")
+    raw_session = await _insert_session(db, settings, user["id"])
+    await db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (to_iso(now), user["id"]))
+    await db.commit()
+    return raw_session, SessionUser(
+        id=user["id"], email=user["email"], is_admin=bool(user["is_admin"])
+    )
+
+
+# --- v3: User invites with quota (F-AUTH-13..18) ---
+
+
+async def _consumed_quota(db: aiosqlite.Connection, user_id: int) -> int:
+    """Sum of max_uses of the user's open (not revoked, not expired) invites (F-AUTH-14)."""
+    async with db.execute(
+        "SELECT COALESCE(SUM(max_uses), 0) AS s FROM invite_tokens "
+        "WHERE created_by_user_id = ? AND revoked_at IS NULL AND expires_at > ?",
+        (user_id, to_iso(now_berlin())),
+    ) as cur:
+        return (await cur.fetchone())["s"]
+
+
+async def create_user_invite(
+    db: aiosqlite.Connection,
+    settings: Settings,
+    user_id: int,
+    max_uses: int,
+    expires_in_days: int | None = None,
+) -> tuple[str, int]:
+    """User invite with quota enforcement. Returns (raw_token, remaining_quota). Admins exempt.
+
+    Quota check + insert run under ``BEGIN IMMEDIATE`` so two parallel requests cannot both
+    pass the check and over-commit the quota (no TOCTOU race).
+    """
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        async with db.execute(
+            "SELECT invite_quota, is_admin FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            urow = await cur.fetchone()
+        quota, is_admin = urow["invite_quota"], bool(urow["is_admin"])
+        if not is_admin and await _consumed_quota(db, user_id) + max_uses > quota:
+            await db.execute("ROLLBACK")
+            raise ForbiddenError(
+                "Du hast dein Einladungs-Kontingent erreicht.", code="invite_quota_exceeded"
+            )
+        raw = new_url_token()
+        now = now_berlin()
+        ttl = expires_in_days if expires_in_days is not None else settings.INVITE_TOKEN_TTL_DAYS
+        await db.execute(
+            "INSERT INTO invite_tokens (token_hash, created_by_user_id, created_at, expires_at, "
+            "max_uses, used_count) VALUES (?, ?, ?, ?, ?, 0)",
+            (
+                hash_token(raw, settings),
+                user_id,
+                to_iso(now),
+                to_iso(now + timedelta(days=ttl)),
+                max_uses,
+            ),
+        )
+        consumed = await _consumed_quota(db, user_id)  # within the tx, includes the new invite
+        await db.execute("COMMIT")
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await db.execute("ROLLBACK")
+        raise
+    remaining = quota if is_admin else max(0, quota - consumed)
+    return raw, remaining
+
+
+async def list_user_invites(db: aiosqlite.Connection, user_id: int) -> list[dict]:
+    """The user's own invites with a derived status (F-AUTH-18). No plaintext tokens."""
+    now = now_berlin()
+    async with db.execute(
+        "SELECT id, max_uses, used_count, expires_at, revoked_at, created_at "
+        "FROM invite_tokens WHERE created_by_user_id = ? ORDER BY id DESC",
+        (user_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    out = []
+    for r in rows:
+        if r["revoked_at"] is not None:
+            status = "revoked"
+        elif from_iso(r["expires_at"]) <= now:
+            status = "expired"
+        elif r["used_count"] >= r["max_uses"]:
+            status = "exhausted"
+        else:
+            status = "active"
+        out.append(
+            {
+                "id": r["id"],
+                "max_uses": r["max_uses"],
+                "used_count": r["used_count"],
+                "expires_at": r["expires_at"],
+                "revoked_at": r["revoked_at"],
+                "created_at": r["created_at"],
+                "status": status,
+            }
+        )
+    return out
+
+
+async def revoke_invite(db: aiosqlite.Connection, user_id: int, invite_id: int) -> bool:
+    """Revoke the caller's own invite. False if not found/not owned (route -> 404, no leak)."""
+    cur = await db.execute(
+        "UPDATE invite_tokens SET revoked_at = ? "
+        "WHERE id = ? AND created_by_user_id = ? AND revoked_at IS NULL",
+        (to_iso(now_berlin()), invite_id, user_id),
+    )
+    await db.commit()
+    return cur.rowcount > 0
+
+
+async def set_invite_quota(db: aiosqlite.Connection, email: str, quota: int) -> bool:
+    """Admin CLI: set a user's invite quota. False if no such user."""
+    cur = await db.execute(
+        "UPDATE users SET invite_quota = ? WHERE email = ? COLLATE NOCASE",
+        (quota, normalize_email(email)),
+    )
+    await db.commit()
+    return cur.rowcount > 0
+
+
+# --- v3: Email change (F-AUTH-28..32) ---
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    return f"{local[0] if local else '?'}***@{domain}"
+
+
+async def create_email_change(
+    db: aiosqlite.Connection, settings: Settings, user_id: int, new_email: str
+) -> tuple[str, str, str]:
+    """Start an email change. Returns (raw_token, code, masked_old_email)."""
+    new_email = normalize_email(new_email)
+    user = await get_user_by_id(db, user_id)
+    if user is None:
+        raise TokenInvalidError("Unknown user.", code="invalid_token")
+    if normalize_email(user["email"]) == new_email:
+        raise ConflictError("That is already your email.", code="email_taken")
+    if await get_user_by_email(db, new_email) is not None:
+        raise ConflictError("This email is taken.", code="email_taken")
+    now = now_berlin()
+    await db.execute(  # invalidate the user's prior open requests
+        "UPDATE email_change_requests SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+        (to_iso(now), user_id),
+    )
+    raw, code = new_url_token(), _generate_code()
+    await db.execute(
+        "INSERT INTO email_change_requests "
+        "(user_id, new_email, token_hash, code_hash, expires_at, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            new_email,
+            hash_token(raw, settings),
+            hash_token(code, settings),
+            to_iso(now + timedelta(minutes=settings.EMAIL_CHANGE_TTL_MIN)),
+            to_iso(now),
+        ),
+    )
+    await db.commit()
+    return raw, code, _mask_email(user["email"])
+
+
+async def _apply_email_change(db: aiosqlite.Connection, row: aiosqlite.Row, now) -> str:
+    """Consume the request + swap the user's email; invalidate old-address login tokens."""
+    consumed = await db.execute(
+        "UPDATE email_change_requests SET used_at = ? WHERE id = ? AND used_at IS NULL",
+        (to_iso(now), row["id"]),
+    )
+    if consumed.rowcount != 1:
+        await db.rollback()
+        raise TokenInvalidError("Invalid request.", code="invalid_code")
+    try:
+        await db.execute(
+            "UPDATE users SET email = ? WHERE id = ?", (row["new_email"], row["user_id"])
+        )
+    except sqlite3.IntegrityError as exc:  # address taken between request and confirm
+        await db.rollback()
+        raise ConflictError("This email is taken.", code="email_taken") from exc
+    await db.execute(  # old-address magic links/codes die (F-AUTH-31)
+        "UPDATE login_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+        (to_iso(now), row["user_id"]),
+    )
+    await db.commit()
+    return row["new_email"]
+
+
+async def confirm_email_change_by_token(
+    db: aiosqlite.Connection, settings: Settings, raw_token: str
+) -> str:
+    """Confirm via the emailed link (mailbox possession = proof). Returns the new email."""
+    now = now_berlin()
+    async with db.execute(
+        "SELECT * FROM email_change_requests WHERE token_hash = ?",
+        (hash_token(raw_token, settings),),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None or row["used_at"] is not None:
+        raise TokenInvalidError("Invalid request.", code="invalid_token")
+    if from_iso(row["expires_at"]) <= now:
+        raise TokenExpiredError("This request has expired.", code="change_expired")
+    return await _apply_email_change(db, row, now)
+
+
+async def confirm_email_change_by_code(
+    db: aiosqlite.Connection, settings: Settings, user_id: int, code: str
+) -> str:
+    """Confirm via the 6-digit code (logged-in user). Returns the new email."""
+    now = now_berlin()
+    async with db.execute(
+        "SELECT * FROM email_change_requests WHERE user_id = ? AND used_at IS NULL "
+        "ORDER BY created_at DESC LIMIT 1",
+        (user_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        raise TokenInvalidError("Invalid request.", code="invalid_code")
+    if row["attempt_count"] >= settings.EMAIL_CHANGE_MAX_ATTEMPTS:
+        raise AppError("Too many attempts.", code="code_locked", status_code=423)
+    if from_iso(row["expires_at"]) <= now:
+        raise TokenExpiredError("This request has expired.", code="change_expired")
+    if not constant_time_equal(hash_token(code, settings), row["code_hash"]):
+        await db.execute(
+            "UPDATE email_change_requests SET attempt_count = attempt_count + 1 WHERE id = ?",
+            (row["id"],),
+        )
+        await db.commit()
+        raise TokenInvalidError("Invalid code.", code="invalid_code")
+    return await _apply_email_change(db, row, now)

@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 
 export function ThirstySection({
@@ -9,17 +10,18 @@ export function ThirstySection({
   onWater: (id: number) => void;
   wateringId: number | null;
 }) {
+  const { t } = useI18n();
   if (plants.length === 0) {
     return (
       <div className="pp-frame mb-6 p-4">
-        <h2 className="pp-heading mb-2 text-sm">Thirsty Plants!</h2>
-        <p className="text-xs opacity-80">🌿 Alles gewässert!</p>
+        <h2 className="pp-heading mb-2 text-sm">{t("thirsty.title")}</h2>
+        <p className="text-xs opacity-80">{t("thirsty.allWatered")}</p>
       </div>
     );
   }
   return (
     <div className="pp-frame mb-6 p-4">
-      <h2 className="pp-heading mb-3 text-sm">Thirsty Plants!</h2>
+      <h2 className="pp-heading mb-3 text-sm">{t("thirsty.title")}</h2>
       <div className="flex flex-col gap-3">
         {plants.map((p) => (
           <div
@@ -33,10 +35,17 @@ export function ThirstySection({
             />
             <div className="flex-1">
               <div className="text-xs font-bold uppercase">{p.name}</div>
-              <div className="text-[10px] opacity-80">Water: {p.interval_days} Days</div>
+              <div className="text-[10px] opacity-80">
+                {t("plant.overdue", { n: p.days_overdue })}
+              </div>
             </div>
-            <button className="pp-btn" onClick={() => onWater(p.id)} disabled={wateringId === p.id}>
-              💧 {wateringId === p.id ? "…" : "Water"}
+            <button
+              type="button"
+              className="pp-btn"
+              onClick={() => onWater(p.id)}
+              disabled={wateringId === p.id}
+            >
+              💧 {wateringId === p.id ? "…" : t("plant.water")}
             </button>
           </div>
         ))}

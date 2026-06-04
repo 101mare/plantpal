@@ -67,21 +67,36 @@ Alle Werte in `.env` (siehe `.env.example`). Defaults in `src/plantpal/config.py
 
 ---
 
-## Deployment (Raspberry Pi / VPS via Docker)
+## Deployment (Pi / Mini-PC via Docker + Cloudflare Tunnel)
 
-**Voraussetzungen:** Docker + Docker Compose, eine öffentliche Domain auf den Host gerichtet (A/AAAA-Record), offene Ports **80** und **443** für Caddys Auto-HTTPS.
+**Idee (v3):** öffentlich erreichbar **ohne** Port-Forwarding im Heimrouter — Cloudflare Tunnel
+terminiert TLS am Edge und reicht den Request intern an die App weiter.
+
+**Voraussetzungen:** Docker + Docker Compose, eine Domain (`getplantpal.com`, idealerweise beim
+**Cloudflare-Registrar** registriert) und ein Cloudflare-Account.
+
+1. **Tunnel anlegen:** Cloudflare → Zero Trust → Networks → Tunnels → *Create*. Public Hostname
+   `getplantpal.com` → Service `http://plantpal:8000`. Tunnel-Token kopieren.
+2. **Mail-Domain verifizieren:** in [Resend](https://resend.com) `getplantpal.com` als
+   Absender-Domain hinzufügen und SPF/DKIM/DMARC-Records in Cloudflare setzen (sonst Spam).
+3. **Starten:**
 
 ```bash
-cp .env.example .env          # Secrets + BASE_URL=https://deine-domain setzen
-export PLANTPAL_DOMAIN=deine-domain.example.com
-docker compose up -d --build
+cp .env.example .env   # Secrets + BASE_URL=https://getplantpal.com + CLOUDFLARE_TUNNEL_TOKEN setzen
+docker compose up -d --build   # startet plantpal + cloudflared
 
-# ersten Admin anlegen (CLI im laufenden Container):
+# ersten Admin anlegen (Login-Link + Code werden in die Konsole gedruckt):
 docker compose exec plantpal python -m plantpal.cli bootstrap-admin --email du@beispiel.de
 ```
 
-Caddy holt automatisch ein Let's-Encrypt-Zertifikat. Die App läuft mit **einem** Worker
-(SQLite + Scheduler in einem Prozess). Migrationen laufen beim Start automatisch und idempotent.
+Die App läuft mit **einem** Worker (SQLite + Scheduler in einem Prozess; WAL + `busy_timeout`
+reicht für 100–1000 Nutzer). Migrationen laufen beim Start automatisch und idempotent.
+
+**Monitoring:** kostenlosen [UptimeRobot](https://uptimerobot.com)-Monitor auf
+`https://getplantpal.com/api/health` setzen (alarmiert bei Down / DB-Fehler / totem Scheduler).
+
+> **Alternative ohne Cloudflare:** Auf einem VPS mit offenen Ports 80/443 kann statt `cloudflared`
+> der beiliegende `Caddyfile` (Auto-HTTPS via Let's Encrypt) genutzt werden.
 
 ---
 
@@ -99,6 +114,8 @@ docker compose exec plantpal python -m plantpal.cli <command>
 | `issue-login-link --email <addr> [--send]` | **Resend-Ausfall-Fallback:** Login-Link manuell ausstellen. |
 | `create-invite --created-by <admin-addr> [--email-hint <addr>] [--send]` | Invite-Token generieren. |
 | `revoke-sessions --email <addr>` | Alle Sessions eines Users zwangsweise beenden. |
+| `set-invite-quota --email <addr> --quota <n>` | Einlade-Kontingent eines Users setzen (v3). |
+| `backup --out <pfad>` | Konsistenten SQLite-Snapshot schreiben (v3, kein sqlite3-CLI nötig). |
 
 `--send` versucht zusätzlich den Versand per Resend; der gedruckte Link funktioniert immer.
 
@@ -108,20 +125,20 @@ docker compose exec plantpal python -m plantpal.cli <command>
 
 Die SQLite-DB liegt auf dem Docker-Volume `plantpal-data` (`/data`).
 
-**Variante A — Litestream (empfohlen, kontinuierlich):**
+**Variante A — Cron-Snapshot + rsync (v3-Default):** `scripts/backup.sh` macht einen
+WAL-konsistenten Snapshot (via `cli backup`, kein sqlite3-CLI im Image nötig) und kopiert DB
+**und** Bilder heraus. In die Host-Crontab eintragen:
+
+```bash
+30 3 * * *  PLANTPAL_BACKUP_DEST=/backup/plantpal /opt/plantpal/scripts/backup.sh
+```
+
+**Variante B — Litestream (kontinuierlich, optional):**
 
 ```bash
 # .env: LITESTREAM_REPLICA_URL=s3://bucket/plantpal + S3-Credentials
-docker compose --profile backup up -d         # startet den Litestream-Sidecar
-# Restore:
+docker compose --profile backup up -d
 docker compose run --rm litestream restore -o /data/plantpal.db "$LITESTREAM_REPLICA_URL"
-```
-
-**Variante B — manueller Snapshot:**
-
-```bash
-docker compose exec plantpal sh -c "sqlite3 /data/plantpal.db '.backup /data/backup.db'"
-docker compose cp plantpal:/data/backup.db ./plantpal-backup-$(date +%F).db
 ```
 
 > Eine SD-Karte im Pi stirbt irgendwann — richte Litestream (oder einen Cron-`rsync`) ein, bevor du echte Daten hast.

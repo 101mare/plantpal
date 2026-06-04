@@ -24,7 +24,7 @@ async def _make_user(db, email, is_admin=0, status="active"):
 
 async def test_request_login_returns_token_for_active_user(db, settings):
     await _make_user(db, "a@b.c")
-    raw = await auth.request_login_link(db, settings, "a@b.c")
+    raw, _code = await auth.request_login_link(db, settings, "a@b.c")
     assert raw is not None
 
 
@@ -42,7 +42,7 @@ async def test_request_login_returns_none_for_disabled(db, settings):
 
 async def test_verify_login_happy(db, settings):
     await _make_user(db, "a@b.c")
-    raw = await auth.request_login_link(db, settings, "a@b.c")
+    raw, _code = await auth.request_login_link(db, settings, "a@b.c")
     session_token, user = await auth.verify_login(db, settings, raw)
     assert user.email == "a@b.c"
     assert await auth.load_session(db, settings, session_token) is not None
@@ -50,7 +50,7 @@ async def test_verify_login_happy(db, settings):
 
 async def test_verify_login_rejects_used_token(db, settings):
     await _make_user(db, "a@b.c")
-    raw = await auth.request_login_link(db, settings, "a@b.c")
+    raw, _code = await auth.request_login_link(db, settings, "a@b.c")
     await auth.verify_login(db, settings, raw)
     with pytest.raises(TokenUsedError):
         await auth.verify_login(db, settings, raw)
@@ -58,7 +58,7 @@ async def test_verify_login_rejects_used_token(db, settings):
 
 async def test_verify_login_rejects_expired(db, settings):
     await _make_user(db, "a@b.c")
-    raw = await auth.request_login_link(db, settings, "a@b.c")
+    raw, _code = await auth.request_login_link(db, settings, "a@b.c")
     past = to_iso(now_berlin() - timedelta(minutes=1))
     await db.execute("UPDATE login_tokens SET expires_at = ?", (past,))
     await db.commit()
@@ -69,7 +69,7 @@ async def test_verify_login_rejects_expired(db, settings):
 async def test_verify_login_double_click_race(db, settings, tmp_path):
     """Two concurrent verifies on separate connections: exactly one wins."""
     await _make_user(db, "a@b.c")
-    raw = await auth.request_login_link(db, settings, "a@b.c")
+    raw, _code = await auth.request_login_link(db, settings, "a@b.c")
     conn2 = await connect(settings)
     try:
         results = await asyncio.gather(
@@ -92,7 +92,7 @@ async def test_verify_login_double_click_race(db, settings, tmp_path):
 async def test_register_with_invite_happy(db, settings):
     admin = await _make_user(db, "admin@b.c", is_admin=1)
     invite = await auth.create_invite(db, settings, admin, "new@b.c")
-    raw = await auth.register_with_invite(db, settings, invite, "new@b.c")
+    raw, _ = await auth.register_with_invite(db, settings, invite, "new@b.c")
     # the returned login token logs the new user in
     _, user = await auth.verify_login(db, settings, raw)
     assert user.email == "new@b.c"
@@ -103,7 +103,7 @@ async def test_register_rejects_used_invite(db, settings):
     admin = await _make_user(db, "admin@b.c", is_admin=1)
     invite = await auth.create_invite(db, settings, admin, None)
     await auth.register_with_invite(db, settings, invite, "one@b.c")
-    with pytest.raises(TokenUsedError):
+    with pytest.raises(ConflictError):  # multi-use semantics: exhausted, not "used"
         await auth.register_with_invite(db, settings, invite, "two@b.c")
 
 

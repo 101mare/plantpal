@@ -1,15 +1,46 @@
 @import "tailwindcss";
 
+/* Self-hosted fonts (no external Google CDN — privacy/DSGVO + offline, PRIV-01).
+   The latin subset (U+0000–00FF) covers DE umlauts (äöüß) and EN. */
+@font-face {
+  font-family: "Press Start 2P";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/press-start-2p-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/vt323-latin.woff2") format("woff2");
+}
+
 @theme {
   --color-pp-bg: #0d2018;
   --color-pp-panel: #15362a;
   --color-pp-panel-2: #1d4634;
   --color-pp-border: #3a7d54;
   --color-pp-gold: #e0b53d;
-  --color-pp-card: #4f8466;
-  --color-pp-card-ink: #0d2018;
+  --color-pp-card: #5c9474; /* lightened so small card text clears 4.5:1 on card-ink (A11Y-02) */
+  --color-pp-card-ink: #0a1611;
   --color-pp-thirsty: #2b5540;
+  --color-pp-danger: #ef6d5a;
   --font-pixel: "Press Start 2P", "VT323", ui-monospace, monospace;
+}
+
+/* Light-mode token overrides (Decision-Log: Light-Mode-Toggle) */
+:root[data-theme="light"] {
+  --color-pp-bg: #f3efe2;
+  --color-pp-panel: #fbf8ef;
+  --color-pp-panel-2: #efe9d8;
+  --color-pp-border: #5f6f45; /* darkened to clear 3:1 non-text contrast (A11Y-01) */
+  --color-pp-gold: #8a6410; /* darkened to clear 4.5:1 as text/heading (A11Y-01) */
+  --color-pp-card: #e4dcc4;
+  --color-pp-card-ink: #2a2410;
+  --color-pp-thirsty: #dde6cb;
+  --color-pp-danger: #b3261e;
 }
 
 html,
@@ -18,10 +49,18 @@ body,
   height: 100%;
 }
 
+/* Honour device safe areas (notch / home indicator) in installed PWA mode (A11Y-06) */
+#root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
 body {
   margin: 0;
-  /* Hand-drawn vine wallpaper (already on the theme's dark green). */
-  background-color: #10251e;
+  background-color: var(--color-pp-bg);
   background-image: url("/vines.png");
   background-size: cover;
   background-position: center top;
@@ -30,6 +69,10 @@ body {
   color: #e8f0e3;
   font-family: var(--font-pixel);
   -webkit-font-smoothing: none;
+}
+
+:root[data-theme="light"] body {
+  color: #2a2410;
 }
 
 /* Pixel-art rendering for plant photos */
@@ -52,9 +95,11 @@ body {
   color: #fff;
   border: 2px solid #2a5e3e;
   border-radius: 10px;
-  padding: 0.6rem 0.9rem;
+  padding: 0.7rem 1rem;
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  min-height: 44px; /* WCAG 2.5.5 touch target */
+  touch-action: manipulation; /* no 300ms double-tap delay (A11Y) */
   transition: transform 0.05s ease;
 }
 .pp-btn:hover {
@@ -68,8 +113,51 @@ body {
   cursor: not-allowed;
 }
 
+/* Visible keyboard focus everywhere; dark halo keeps the gold ring readable on every
+   surface incl. cards/buttons where gold-on-bg alone was < 3:1 (A11Y-01). */
+:focus-visible {
+  outline: 3px solid var(--color-pp-gold);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
 .pp-heading {
   color: var(--color-pp-gold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.pp-input {
+  background: var(--color-pp-panel-2);
+  color: inherit;
+  border: 2px solid var(--color-pp-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+/* Visually-hidden until focused: skip-to-content link (A11Y-12) */
+.pp-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+}
+.pp-skip:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
+
+/* Respect reduced-motion preference (A11Y-05) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

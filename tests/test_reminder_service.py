@@ -182,11 +182,33 @@ async def test_dst_fall_back_no_duplicate(db, fast_settings):
     assert len(sender.calls) == 1
 
 
-async def test_catch_up_before_reminder_hour_targets_yesterday(db, fast_settings):
-    uid = await _user(db, "a@b.c")
-    await _thirsty_plant(db, uid)
+async def test_catch_up_respects_user_hour(db, fast_settings):
+    """v3 (Codex HIGH): catch-up serves only users whose chosen hour has already passed."""
+    early = await _user(db, "early@b.c")
+    await db.execute("UPDATE users SET reminder_hour = 5 WHERE id = ?", (early,))
+    late = await _user(db, "late@b.c")
+    await db.execute("UPDATE users SET reminder_hour = 20 WHERE id = ?", (late,))
+    await db.commit()
+    await _thirsty_plant(db, early)
+    await _thirsty_plant(db, late)
     sender = FakeSender()
+    # reboot at 06:00 → only the 05:00 user is due; the 20:00 user is not yet
     res = await rs.catch_up_missed(
         db, fast_settings, now=datetime(2026, 5, 21, 6, 0, 0), sender=sender
     )
-    assert res["sent"] == 1  # yesterday's pending reminder
+    assert res["sent"] == 1  # only the early user (hour 5 <= 6)
+
+
+async def test_hourly_cron_matches_exact_hour(db, fast_settings):
+    """v3: the hourly cron serves only users whose reminder_hour equals the current hour."""
+    at8 = await _user(db, "at8@b.c")  # default reminder_hour = 8
+    at9 = await _user(db, "at9@b.c")
+    await db.execute("UPDATE users SET reminder_hour = 9 WHERE id = ?", (at9,))
+    await db.commit()
+    await _thirsty_plant(db, at8)
+    await _thirsty_plant(db, at9)
+    sender = FakeSender()
+    res = await rs.run_hourly_reminders(
+        db, fast_settings, now=datetime(2026, 5, 21, 8, 0, 0), sender=sender
+    )
+    assert res["sent"] == 1  # only the 08:00 user, not the 09:00 one

@@ -28,7 +28,7 @@ async def _login(client, db, settings, email="admin@b.c", admin=True):
         _, raw = await auth_service.bootstrap_admin(db, settings, email)
     else:
         await _make_user(db, email)
-        raw = await auth_service.request_login_link(db, settings, email)
+        raw, _ = await auth_service.request_login_link(db, settings, email)
     resp = await client.get(f"/auth/verify?token={raw}")
     assert resp.status_code == 303  # redirect into the SPA; cookies set on the 303
     return client.cookies.get(settings.CSRF_COOKIE_NAME)
@@ -179,7 +179,9 @@ async def test_settings_toggle_and_stats(client, db, settings):
     assert r.json()["email_reminders_enabled"] is False
 
     r = await client.get("/api/stats")
-    assert r.json() == {"total_plants": 0, "thirsty_count": 0}
+    body = r.json()
+    assert body["total_plants"] == 0
+    assert body["thirsty_count"] == 0
 
 
 # --- admin invite ---

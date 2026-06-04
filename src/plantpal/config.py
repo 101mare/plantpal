@@ -39,8 +39,7 @@ class Settings(BaseSettings):
     IMG_MAX_UPLOAD_MB: int = 10
     IMG_MAX_PIXELS: int = 25_000_000
 
-    # Reminders
-    REMINDER_HOUR_BERLIN: int = Field(default=8, ge=0, le=23)
+    # Reminders (per-user reminder_hour lives on the users row; the hourly cron matches it)
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "PlantPal <noreply@localhost>"
     RESEND_RATE_PER_SEC: float = 5.0
@@ -60,6 +59,34 @@ class Settings(BaseSettings):
     LITESTREAM_ENABLED: bool = False
     LITESTREAM_REPLICA_URL: str | None = None
 
+    # --- v3: Login-Code (6-digit alternative to the magic link) ---
+    LOGIN_CODE_TTL_MIN: int = 10  # shorter than LOGIN_TOKEN_TTL_MIN (30)
+    LOGIN_CODE_MAX_ATTEMPTS: int = 5  # per-token lockout threshold
+    RL_LOGIN_CODE_VERIFY_IP: str = "10/m"
+    RL_LOGIN_CODE_VERIFY_EMAIL: str = "5/m"
+
+    # --- v3: Invites (user-created multi-use links) ---
+    RL_INVITE_MUTATION: str = "30/m"
+
+    # --- v3: Email change ---
+    EMAIL_CHANGE_TTL_MIN: int = 30
+    EMAIL_CHANGE_MAX_ATTEMPTS: int = 5
+    RL_EMAIL_CHANGE_USER: str = "3/h"
+
+    # --- v3: Housekeeping / DB-hygiene cron ---
+    HK_HOUR_BERLIN: int = Field(default=3, ge=0, le=23)
+    HK_MINUTE_BERLIN: int = Field(default=30, ge=0, le=59)
+    HK_REMINDER_LOG_RETENTION_DAYS: int = 90
+    HK_RUN_ON_STARTUP: bool = False
+
+    # --- v3: DSGVO data export ---
+    EXPORT_RATE: str = "3/h"
+
+    # --- v3: Observability ---
+    LOG_LEVEL: str = "INFO"  # DEBUG|INFO|WARNING|ERROR
+    LOG_JSON: bool | None = None  # None -> JSON in prod, console otherwise
+    APP_VERSION: str = "3.0.0"
+
     @property
     def is_production(self) -> bool:
         return self.APP_ENV.lower() == "production"
@@ -73,6 +100,12 @@ class Settings(BaseSettings):
         """Fail fast on contradictory or unsafe production config."""
         if self.SESSION_HARD_CAP_DAYS < self.SESSION_SOFT_CAP_DAYS:
             raise ValueError("SESSION_HARD_CAP_DAYS must be >= SESSION_SOFT_CAP_DAYS")
+        if not (1 <= self.LOGIN_CODE_TTL_MIN <= self.LOGIN_TOKEN_TTL_MIN):
+            raise ValueError("LOGIN_CODE_TTL_MIN must be in 1..LOGIN_TOKEN_TTL_MIN")
+        if self.LOGIN_CODE_MAX_ATTEMPTS < 1:
+            raise ValueError("LOGIN_CODE_MAX_ATTEMPTS must be >= 1")
+        if self.EMAIL_CHANGE_MAX_ATTEMPTS < 1:
+            raise ValueError("EMAIL_CHANGE_MAX_ATTEMPTS must be >= 1")
         if self.IMG_SIZE_PX <= 0:
             raise ValueError("IMG_SIZE_PX must be positive")
         if self.IMG_MAX_UPLOAD_MB <= 0 or self.IMG_MAX_UPLOAD_MB > 50:

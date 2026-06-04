@@ -15,11 +15,18 @@ from contextlib import asynccontextmanager
 import aiosqlite
 from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from pydantic import ValidationError
 
-from . import auth_service, email_service, image_service, plant_service, reminder_service
+from . import (
+    account_export_service,
+    auth_service,
+    email_service,
+    housekeeping_service,
+    image_service,
+    plant_service,
+    reminder_service,
+)
 from .config import Settings, get_settings
-from .db import init_db
+from .db import connect, init_db
 from .errors import (
     AppError,
     AuthError,
@@ -28,7 +35,10 @@ from .errors import (
     NotFoundError,
     install_exception_handlers,
 )
+from .logging_setup import configure_logging, get_logger
 from .models import (
+    EmailChangeConfirm,
+    EmailChangeRequestBody,
     GenericOk,
     HealthResponse,
     InviteCreateRequest,
@@ -39,7 +49,7 @@ from .models import (
     RegisterRequest,
     SettingsResponse,
     SettingsUpdate,
-    StatsResponse,
+    VerifyCodeRequest,
 )
 from .rate_limit import check_rate_limit, key_email, key_ip, key_user
 from .security import create_csrf_token, hash_ip, verify_csrf_token
@@ -79,17 +89,27 @@ def _clear_auth_cookies(response: Response, settings: Settings) -> None:
 # --- dependencies ---
 
 
-def _db(request: Request) -> aiosqlite.Connection:
-    return request.app.state.db
+async def _db(request: Request):
+    """Per-request connection in prod (transaction isolation — each request gets its own
+    SQLite transaction, so a rollback in one request can't undo another's writes). Tests
+    inject one shared connection (APP_ENV=test) and keep the M1 fixture behaviour."""
+    app = request.app
+    if app.state.settings.APP_ENV == "test":
+        yield app.state.db
+        return
+    conn = await connect(app.state.settings)
+    try:
+        yield conn
+    finally:
+        await conn.close()
 
 
 def _settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-async def current_user(request: Request):
+async def current_user(request: Request, db=Depends(_db)):
     settings = request.app.state.settings
-    db = request.app.state.db
     token = request.cookies.get(settings.COOKIE_NAME)
     if not token:
         raise AuthError("Not signed in.")
@@ -113,18 +133,21 @@ async def require_admin(user=Depends(current_user)):
 def _origin_allowed(candidate: str | None, settings: Settings) -> bool:
     """True if the request's Origin/Referer is acceptable.
 
-    Prod: must match BASE_URL. Dev: also accept any localhost origin so a Vite
-    dev server (:5173) talking to the backend (:8000) isn't rejected.
+    Prod: scheme+host+port must match BASE_URL *exactly* (a substring/startswith check
+    would wrongly accept ``https://example.com.evil.tld`` for ``https://example.com``).
+    Dev: also accept any localhost origin so a Vite dev server (:5173) talking to the
+    backend (:8000) isn't rejected.
     """
     if not candidate:
         return True  # no Origin/Referer → fall back to the double-submit token check
-    cleaned = candidate.rstrip("/")
-    if cleaned.startswith(settings.BASE_URL.rstrip("/")):
+    from urllib.parse import urlparse
+
+    got = urlparse(candidate)
+    base = urlparse(settings.BASE_URL)
+    if (got.scheme, got.hostname, got.port) == (base.scheme, base.hostname, base.port):
         return True
     if not settings.is_production:
-        from urllib.parse import urlparse
-
-        return urlparse(cleaned).hostname in ("localhost", "127.0.0.1")
+        return got.hostname in ("localhost", "127.0.0.1")
     return False
 
 
@@ -156,13 +179,26 @@ def _start_scheduler(app: FastAPI):
     settings = app.state.settings
     scheduler = AsyncIOScheduler(timezone="Europe/Berlin")
 
-    async def _job():
-        await reminder_service.run_daily_reminders(app.state.db, settings)
+    async def _digest_job():
+        # hourly: each run serves users whose chosen reminder_hour == the current Berlin hour
+        await reminder_service.run_hourly_reminders(app.state.db, settings)
+
+    async def _housekeeping_job():
+        await housekeeping_service.run_housekeeping(app.state.db, settings)
 
     scheduler.add_job(
-        _job,
-        CronTrigger(hour=settings.REMINDER_HOUR_BERLIN, minute=0, timezone="Europe/Berlin"),
+        _digest_job,
+        CronTrigger(minute=0, timezone="Europe/Berlin"),  # every hour on the hour
         id="daily_digest",
+    )
+    scheduler.add_job(
+        _housekeeping_job,
+        CronTrigger(
+            hour=settings.HK_HOUR_BERLIN,
+            minute=settings.HK_MINUTE_BERLIN,
+            timezone="Europe/Berlin",
+        ),
+        id="daily_housekeeping",
     )
     scheduler.start()
     return scheduler
@@ -173,6 +209,7 @@ def create_app(settings: Settings | None = None, db: aiosqlite.Connection | None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        configure_logging(settings)
         if settings.APP_ENV == "production":
             settings.validate_runtime()  # fail fast on unsafe/contradictory prod config
         own_db = app.state.db is None
@@ -181,6 +218,8 @@ def create_app(settings: Settings | None = None, db: aiosqlite.Connection | None
         if settings.APP_ENV != "test":
             app.state.scheduler = _start_scheduler(app)
             await reminder_service.catch_up_missed(app.state.db, settings)
+            if settings.HK_RUN_ON_STARTUP:
+                await housekeeping_service.run_housekeeping(app.state.db, settings)
         try:
             yield
         finally:
@@ -196,19 +235,27 @@ def create_app(settings: Settings | None = None, db: aiosqlite.Connection | None
     app.state.scheduler = None
     install_exception_handlers(app)
 
-    @app.exception_handler(ValidationError)
-    async def _on_validation(_: Request, exc: ValidationError):
-        return JSONResponse(
-            status_code=422,
-            content={"error": {"code": "validation_error", "message": exc.errors()[0]["msg"]}},
-        )
-
     @app.middleware("http")
     async def _renew_cookie(request: Request, call_next):
         response = await call_next(request)
         token = getattr(request.state, "renew_session_token", None)
         if token:
             _set_auth_cookies(response, request.app.state.settings, token)
+        return response
+
+    @app.middleware("http")
+    async def _request_log(request: Request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        route = request.scope.get("route")
+        get_logger("plantpal.request").info(
+            "request",
+            method=request.method,
+            path=getattr(route, "path", request.url.path),  # low-cardinality template, not raw IDs
+            status=response.status_code,
+            duration_ms=round((time.monotonic() - start) * 1000, 1),
+            ip_hash=_client_ip(request),
+        )
         return response
 
     _register_routes(app)
@@ -225,17 +272,20 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         start = time.monotonic()
         try:
             await check_rate_limit(
-                db, key_email(body.email.lower(), "login"), settings.RL_LOGIN_REQUEST_EMAIL
+                db,
+                key_email(body.email.lower(), "login", settings),
+                settings.RL_LOGIN_REQUEST_EMAIL,
             )
             await check_rate_limit(
                 db, key_ip(_client_ip(request), "login"), settings.RL_LOGIN_REQUEST_IP
             )
-            raw = await auth_service.request_login_link(db, settings, body.email)
-            if raw:
+            issued = await auth_service.request_login_link(db, settings, body.email)
+            if issued:
+                raw, code = issued
                 # CLI fallback exists; never reveal send status to the caller
                 with contextlib.suppress(email_service.EmailUnavailableError):
                     await email_service.send_magic_link(
-                        settings, body.email, auth_service.login_url(settings, raw)
+                        settings, body.email, auth_service.login_url(settings, raw), code
                     )
         finally:
             elapsed_ms = (time.monotonic() - start) * 1000
@@ -258,15 +308,36 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         _set_auth_cookies(response, settings, session_token)
         return response
 
+    @app.post("/auth/verify-code")
+    async def verify_code(
+        request: Request, body: VerifyCodeRequest, db=Depends(_db), settings=Depends(_settings)
+    ):
+        await check_rate_limit(
+            db, key_ip(_client_ip(request), "codeverify"), settings.RL_LOGIN_CODE_VERIFY_IP
+        )
+        await check_rate_limit(
+            db,
+            key_email(body.email.lower(), "codeverify", settings),
+            settings.RL_LOGIN_CODE_VERIFY_EMAIL,
+        )
+        session_token, _user = await auth_service.verify_login_code(
+            db, settings, body.email, body.code
+        )
+        response = JSONResponse({"ok": True})
+        _set_auth_cookies(response, settings, session_token)
+        return response
+
     @app.post("/auth/register")
     async def register(
         request: Request, body: RegisterRequest, db=Depends(_db), settings=Depends(_settings)
     ):
         await check_rate_limit(db, key_ip(_client_ip(request), "register"), settings.RL_REGISTER_IP)
-        raw = await auth_service.register_with_invite(db, settings, body.invite_token, body.email)
+        raw, code = await auth_service.register_with_invite(
+            db, settings, body.invite_token, body.email
+        )
         with contextlib.suppress(email_service.EmailUnavailableError):
             await email_service.send_magic_link(
-                settings, body.email, auth_service.login_url(settings, raw)
+                settings, body.email, auth_service.login_url(settings, raw), code
             )
         return GenericOk(message="Account created. Check your email for a sign-in link.")
 
@@ -288,11 +359,117 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
     async def me(user=Depends(current_user)):
         return {"id": user.id, "email": user.email, "is_admin": user.is_admin}
 
+    # --- v3: user invites (quota-checked, multi-use) ---
+    @app.post("/api/invites", status_code=201)
+    async def create_invite_user(
+        body: InviteCreateRequest,
+        user=Depends(current_user),
+        _csrf=Depends(require_csrf),
+        db=Depends(_db),
+        settings=Depends(_settings),
+    ):
+        from datetime import timedelta
+
+        from .time_utils import now_berlin, to_iso
+
+        await check_rate_limit(db, key_user(user.id, "invite"), settings.RL_INVITE_MUTATION)
+        raw, remaining = await auth_service.create_user_invite(
+            db, settings, user.id, body.max_uses, body.expires_in_days
+        )
+        ttl = body.expires_in_days or settings.INVITE_TOKEN_TTL_DAYS
+        return InviteResponse(
+            invite_url=auth_service.register_url(settings, raw),
+            expires_at=to_iso(now_berlin() + timedelta(days=ttl)),
+            max_uses=body.max_uses,
+            used_count=0,
+            remaining_quota=remaining,
+        ).model_dump()
+
+    @app.get("/api/invites")
+    async def list_invites(user=Depends(current_user), db=Depends(_db)):
+        return {"items": await auth_service.list_user_invites(db, user.id)}
+
+    @app.post("/api/invites/{invite_id}/revoke")
+    async def revoke_invite_user(
+        invite_id: int,
+        user=Depends(current_user),
+        _csrf=Depends(require_csrf),
+        db=Depends(_db),
+        settings=Depends(_settings),
+    ):
+        await check_rate_limit(db, key_user(user.id, "invite"), settings.RL_INVITE_MUTATION)
+        if not await auth_service.revoke_invite(db, user.id, invite_id):
+            raise NotFoundError("invite_not_found", code="invite_not_found", status_code=404)
+        return GenericOk()
+
+    # --- v3: email change ---
+    @app.post("/api/account/email")
+    async def request_email_change(
+        body: EmailChangeRequestBody,
+        user=Depends(current_user),
+        _csrf=Depends(require_csrf),
+        db=Depends(_db),
+        settings=Depends(_settings),
+    ):
+        await check_rate_limit(db, key_user(user.id, "emailchange"), settings.RL_EMAIL_CHANGE_USER)
+        raw, code, _ = await auth_service.create_email_change(db, settings, user.id, body.new_email)
+        confirm_url = f"{settings.BASE_URL}/api/account/email/confirm?token={raw}"
+        old_email = (await auth_service.get_user_by_id(db, user.id))["email"]
+        with contextlib.suppress(email_service.EmailUnavailableError):
+            await email_service.send_email_change_verify(
+                settings, body.new_email, confirm_url, code
+            )
+        with contextlib.suppress(email_service.EmailUnavailableError):
+            await email_service.send_email_change_notice(
+                settings, old_email, auth_service._mask_email(body.new_email)
+            )
+        return GenericOk()
+
+    @app.get("/api/account/email/confirm")
+    async def confirm_email_change_link(
+        request: Request, token: str, db=Depends(_db), settings=Depends(_settings)
+    ):
+        await check_rate_limit(
+            db, key_ip(_client_ip(request), "emailconfirm"), settings.RL_LOGIN_VERIFY_IP
+        )
+        try:
+            await auth_service.confirm_email_change_by_token(db, settings, token)
+        except AppError as exc:
+            return RedirectResponse(f"/settings?email_error={exc.code}", status_code=303)
+        return RedirectResponse("/settings?email_changed=1", status_code=303)
+
+    @app.post("/api/account/email/confirm")
+    async def confirm_email_change_code(
+        body: EmailChangeConfirm,
+        user=Depends(current_user),
+        _csrf=Depends(require_csrf),
+        db=Depends(_db),
+        settings=Depends(_settings),
+    ):
+        await check_rate_limit(db, key_user(user.id, "emailconfirm"), settings.RL_PLANT_MUTATION)
+        new_email = await auth_service.confirm_email_change_by_code(
+            db, settings, user.id, body.code
+        )
+        return {"ok": True, "email": new_email}
+
     # --- plants ---
     @app.get("/api/plants")
-    async def list_plants(user=Depends(current_user), db=Depends(_db)):
+    async def list_plants(group_by: str | None = None, user=Depends(current_user), db=Depends(_db)):
         rows = await plant_service.list_plants(db, user.id)
-        return {"items": [plant_service.to_response(r).model_dump() for r in rows]}
+        result: dict = {"items": [plant_service.to_response(r).model_dump() for r in rows]}
+        if group_by == "room":
+            result["groups"] = [g.model_dump() for g in plant_service.build_groups(rows)]
+        return result
+
+    @app.get("/api/plants/{plant_id}/waterings")
+    async def list_waterings(plant_id: int, user=Depends(current_user), db=Depends(_db)):
+        rows = await plant_service.list_waterings(db, user.id, plant_id)
+        if rows is None:
+            raise NotFoundError("plant_not_found", code="plant_not_found", status_code=404)
+        return {
+            "items": [plant_service.watering_to_response(r).model_dump() for r in rows],
+            "count": len(rows),
+        }
 
     @app.post("/api/plants", status_code=201)
     async def create_plant(
@@ -301,6 +478,7 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         interval_days: int = Form(...),
         notes: str | None = Form(None),
         water_amount_ml: int | None = Form(None),
+        location_room: str | None = Form(None),
         image: UploadFile = File(...),
         user=Depends(current_user),
         _csrf=Depends(require_csrf),
@@ -309,11 +487,15 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
     ):
         await check_rate_limit(db, key_user(user.id, "plant"), settings.RL_PLANT_MUTATION)
         data = PlantCreate(
-            name=name, interval_days=interval_days, notes=notes, water_amount_ml=water_amount_ml
+            name=name,
+            interval_days=interval_days,
+            notes=notes,
+            water_amount_ml=water_amount_ml,
+            location_room=location_room,
         )
         pid = await plant_service.create_plant(db, user.id, data)
         try:
-            raw = await image.read()
+            raw = await image_service.read_upload_limited(image, settings)
             path = await image_service.process_upload(
                 settings, user.id, pid, raw, image.content_type
             )
@@ -386,7 +568,7 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         await check_rate_limit(db, key_user(user.id, "image"), settings.RL_IMAGE_UPLOAD)
         if await plant_service.get_plant(db, user.id, plant_id) is None:
             raise NotFoundError("plant_not_found", code="plant_not_found", status_code=404)
-        raw = await image.read()
+        raw = await image_service.read_upload_limited(image, settings)
         path = await image_service.process_upload(
             settings, user.id, plant_id, raw, image.content_type
         )
@@ -412,6 +594,11 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
             email=row["email"],
             email_reminders_enabled=bool(row["email_reminders_enabled"]),
             reminder_channel=row["reminder_channel"],
+            locale=row["locale"],
+            reminder_hour=row["reminder_hour"],
+            theme=row["theme"],
+            invite_quota=row["invite_quota"],
+            is_admin=bool(row["is_admin"]),
         ).model_dump()
 
     @app.patch("/api/settings")
@@ -423,17 +610,26 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         settings=Depends(_settings),
     ):
         await check_rate_limit(db, key_user(user.id, "settings"), settings.RL_PLANT_MUTATION)
-        await db.execute(
-            "UPDATE users SET email_reminders_enabled = ? WHERE id = ?",
-            (1 if body.email_reminders_enabled else 0, user.id),
-        )
-        await db.commit()
+        fields = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+        updates: dict = {}
+        if "email_reminders_enabled" in fields:
+            updates["email_reminders_enabled"] = 1 if fields["email_reminders_enabled"] else 0
+        for col in ("locale", "reminder_hour", "theme"):
+            if col in fields:
+                updates[col] = fields[col]
+        if updates:
+            assignments = ", ".join(f"{key} = ?" for key in updates)
+            await db.execute(
+                f"UPDATE users SET {assignments} WHERE id = ?",  # noqa: S608 — fixed-whitelist keys
+                (*updates.values(), user.id),
+            )
+            await db.commit()
         return GenericOk()
 
     @app.get("/api/stats")
-    async def get_stats(user=Depends(current_user), db=Depends(_db)):
-        total, thirsty = await plant_service.stats(db, user.id)
-        return StatsResponse(total_plants=total, thirsty_count=thirsty).model_dump()
+    async def get_stats(by_room: bool = False, user=Depends(current_user), db=Depends(_db)):
+        stats = await plant_service.compute_stats(db, user.id, by_room=by_room)
+        return stats.model_dump()
 
     @app.delete("/api/account")
     async def delete_account(
@@ -449,6 +645,21 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         _clear_auth_cookies(response, settings)
         return response
 
+    @app.get("/api/account/export")
+    async def export_account(
+        user=Depends(current_user), db=Depends(_db), settings=Depends(_settings)
+    ):
+        from .time_utils import today_berlin
+
+        await check_rate_limit(db, key_user(user.id, "export"), settings.EXPORT_RATE)
+        blob = await account_export_service.build_export_zip(db, settings, user.id)
+        filename = f"plantpal-export-{user.id}-{today_berlin().isoformat()}.zip"
+        return Response(
+            content=blob,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     # --- admin ---
     @app.post("/api/admin/invites", status_code=201)
     async def create_invite(
@@ -458,28 +669,60 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 — flat route table b
         db=Depends(_db),
         settings=Depends(_settings),
     ):
-        raw = await auth_service.create_invite(db, settings, admin.id, body.email_hint)
+        await check_rate_limit(db, key_user(admin.id, "invite"), settings.RL_INVITE_MUTATION)
+        raw = await auth_service.create_invite(
+            db, settings, admin.id, body.email_hint, body.max_uses, body.expires_in_days
+        )
         from datetime import timedelta
 
         from .time_utils import now_berlin, to_iso
 
-        expires = to_iso(now_berlin() + timedelta(days=settings.INVITE_TOKEN_TTL_DAYS))
+        ttl = (
+            body.expires_in_days
+            if body.expires_in_days is not None
+            else settings.INVITE_TOKEN_TTL_DAYS
+        )
+        expires = to_iso(now_berlin() + timedelta(days=ttl))
         return InviteResponse(
-            invite_url=auth_service.register_url(settings, raw), expires_at=expires
+            invite_url=auth_service.register_url(settings, raw),
+            expires_at=expires,
+            max_uses=body.max_uses,
+            used_count=0,
         ).model_dump()
 
     # --- health ---
     @app.get("/api/health")
-    async def health(request: Request, db=Depends(_db)):
+    async def health(request: Request, db=Depends(_db), settings=Depends(_settings)):
         db_ok = True
+        wal_mode = False
         try:
             async with db.execute("SELECT 1") as cur:
                 await cur.fetchone()
+            async with db.execute("PRAGMA journal_mode") as cur:
+                row = await cur.fetchone()
+            wal_mode = bool(row) and str(row[0]).lower() == "wal"
         except Exception:  # noqa: BLE001
             db_ok = False
+        db_writable = db_ok
+        if db_ok:
+            try:  # no-op write that fails on a read-only / full filesystem
+                async with db.execute("PRAGMA user_version") as cur:
+                    ver = (await cur.fetchone())[0]
+                await db.execute(f"PRAGMA user_version = {int(ver)}")  # noqa: S608 — int only
+            except Exception:  # noqa: BLE001
+                db_writable = False
         scheduler = getattr(request.app.state, "scheduler", None)
+        running = bool(scheduler and scheduler.running)
+        jobs = None
+        if scheduler is not None:
+            ids = {j.id for j in scheduler.get_jobs()}
+            jobs = {"digest": "daily_digest" in ids, "housekeeping": "daily_housekeeping" in ids}
         return HealthResponse(
-            status="ok" if db_ok else "degraded",
+            status="ok" if (db_ok and db_writable) else "degraded",
             db_ok=db_ok,
-            scheduler_running=bool(scheduler and scheduler.running),
+            scheduler_running=running,
+            db_writable=db_writable,
+            wal_mode=wal_mode,
+            version=settings.APP_VERSION,
+            jobs=jobs,
         ).model_dump()

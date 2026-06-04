@@ -10,7 +10,9 @@ import time
 
 import aiosqlite
 
+from .config import Settings
 from .errors import RateLimitError
+from .security import hash_token
 
 _UNITS = {"s": 1, "m": 60, "h": 3600}
 
@@ -52,8 +54,10 @@ def key_ip(ip_hash: str, scope: str) -> str:
     return f"{scope}:ip:{ip_hash}"
 
 
-def key_email(email: str, scope: str) -> str:
-    return f"{scope}:email:{email}"
+def key_email(email: str, scope: str, settings: Settings) -> str:
+    # Store the email only as a peppered HMAC, never cleartext in the rate_limits table
+    # (this also covers login attempts for non-existent users).
+    return f"{scope}:email:{hash_token(email.strip().lower(), settings)}"
 
 
 def key_user(user_id: int, scope: str) -> str:

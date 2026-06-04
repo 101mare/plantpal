@@ -76,14 +76,24 @@ def _button(url: str, label: str) -> str:
     )
 
 
-def build_magic_link(url: str) -> tuple[str, str, str]:
+def _code_block(code: str, hint: str) -> str:
+    return (
+        f'<p style="margin-top:16px">{escape(hint)}</p>'
+        f'<p style="font-size:28px;letter-spacing:6px;font-family:monospace;color:#d4af37">'
+        f"<b>{escape(code)}</b></p>"
+    )
+
+
+def build_magic_link(url: str, code: str | None = None) -> tuple[str, str, str]:
     subject = "Dein PlantPal Login-Link"
+    code_html = _code_block(code, "Oder gib diesen Code ein (10 Minuten gültig):") if code else ""
     html = _shell(
         "PlantPal Login",
         f"<p>Klicke zum Einloggen. Der Link ist 30 Minuten gültig und einmalig nutzbar.</p>"
-        f"{_button(url, 'Einloggen')}",
+        f"{_button(url, 'Einloggen')}{code_html}",
     )
-    text = f"PlantPal Login (30 min gültig, einmalig):\n{url}"
+    code_text = f"\n\nOder Code eingeben (10 min gültig): {code}" if code else ""
+    text = f"PlantPal Login (Link 30 min gültig, einmalig):\n{url}{code_text}"
     return subject, html, text
 
 
@@ -118,8 +128,8 @@ def build_digest(base_url: str, plants: list[dict]) -> tuple[str, str, str]:
 # --- Public send helpers ---
 
 
-async def send_magic_link(settings: Settings, to: str, url: str) -> dict:
-    return await _send(settings, to, *build_magic_link(url))
+async def send_magic_link(settings: Settings, to: str, url: str, code: str | None = None) -> dict:
+    return await _send(settings, to, *build_magic_link(url, code))
 
 
 async def send_invite(settings: Settings, to: str, url: str) -> dict:
@@ -128,3 +138,39 @@ async def send_invite(settings: Settings, to: str, url: str) -> dict:
 
 async def send_daily_digest(settings: Settings, to: str, plants: list[dict]) -> dict:
     return await _send(settings, to, *build_digest(settings.BASE_URL, plants))
+
+
+# --- v3: email change (F-AUTH-29) ---
+
+
+def build_email_change_verify(url: str, code: str) -> tuple[str, str, str]:
+    subject = "Bestätige deine neue PlantPal-Email"
+    html = _shell(
+        "Email-Änderung bestätigen",
+        f"<p>Bestätige deine neue Email-Adresse für PlantPal.</p>{_button(url, 'Bestätigen')}"
+        + _code_block(code, "Oder gib diesen Code in PlantPal ein (30 Minuten gültig):"),
+    )
+    text = f"Bestätige deine neue PlantPal-Email:\n{url}\n\nOder Code (30 min gültig): {code}"
+    return subject, html, text
+
+
+def build_email_change_notice(new_email_masked: str) -> tuple[str, str, str]:
+    subject = "Sicherheitshinweis: Email-Änderung beantragt"
+    html = _shell(
+        "Sicherheitshinweis",
+        f"<p>Es wurde beantragt, deine PlantPal-Email zu <b>{escape(new_email_masked)}</b> zu "
+        "ändern. Warst du das nicht, ignoriere diese Mail oder ändere deine Adresse zurück.</p>",
+    )
+    text = (
+        f"Es wurde beantragt, deine PlantPal-Email zu {new_email_masked} zu ändern. "
+        "Warst du das nicht, ignoriere diese Mail."
+    )
+    return subject, html, text
+
+
+async def send_email_change_verify(settings: Settings, to: str, url: str, code: str) -> dict:
+    return await _send(settings, to, *build_email_change_verify(url, code))
+
+
+async def send_email_change_notice(settings: Settings, to: str, new_email_masked: str) -> dict:
+    return await _send(settings, to, *build_email_change_notice(new_email_masked))

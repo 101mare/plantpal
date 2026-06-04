@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 
 class AppError(Exception):
@@ -87,6 +89,17 @@ class RateLimitError(AppError):
         super().__init__(message or "Too many attempts. Try again later.")
 
 
+def _first_validation_msg(errors: list) -> str:
+    """Turn pydantic/FastAPI validation errors into one human-readable line."""
+    if not errors:
+        return "Invalid input."
+    err = errors[0]
+    loc = err.get("loc", ())
+    field = str(loc[-1]) if loc else ""
+    msg = err.get("msg", "Invalid input.")
+    return f"{field}: {msg}" if field and field not in ("body", "__root__") else msg
+
+
 def install_exception_handlers(app) -> None:
     @app.exception_handler(AppError)
     async def _handle_app_error(_: Request, exc: AppError):
@@ -97,4 +110,23 @@ def install_exception_handlers(app) -> None:
             status_code=exc.status_code,
             content={"error": {"code": exc.code, "message": exc.message}},
             headers=headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_request_validation(_: Request, exc: RequestValidationError):
+        # FastAPI auto body/query validation defaults to {"detail": [...]}; remap to our
+        # {"error": {code, message}} contract so the FE error parser can read it (API-01).
+        msg = _first_validation_msg(exc.errors())
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"code": "validation_error", "message": msg}},
+        )
+
+    @app.exception_handler(ValidationError)
+    async def _handle_pydantic_validation(_: Request, exc: ValidationError):
+        # Bare pydantic errors from manual model construction inside handlers (e.g. create_plant).
+        msg = _first_validation_msg(exc.errors())
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"code": "validation_error", "message": msg}},
         )
