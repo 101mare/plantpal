@@ -29,7 +29,9 @@ export function LoginPage() {
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <h1 className="pp-heading mb-6 text-center text-lg">🌱 PlantPal</h1>
+        <h1 className="mb-6 text-center">
+          <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-14 w-auto" />
+        </h1>
         {sent ? (
           <div className="pp-frame p-8 text-center text-sm leading-relaxed">
             <p className="mb-4">{t("login.checkInbox")}</p>

@@ -6,11 +6,12 @@ import { Toaster, toast } from "sonner";
 import { ApiError } from "./api";
 import { App } from "./App";
 import { I18nProvider, detectLocale } from "./i18n";
-import { ThemeProvider, detectTheme, useTheme } from "./theme";
+import { ThemeProvider, detectBackground, detectTheme, useTheme } from "./theme";
 import "./index.css";
 
 // Apply persisted theme + language before first paint (no flash).
 document.documentElement.setAttribute("data-theme", detectTheme());
+document.documentElement.setAttribute("data-bg", detectBackground());
 document.documentElement.lang = detectLocale();
 
 // Register the service worker; surface an explicit "update available" banner with a manual

@@ -33,7 +33,9 @@ export function LoginCodePage() {
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <h1 className="pp-heading mb-6 text-center text-lg">🌱 PlantPal</h1>
+        <h1 className="mb-6 text-center">
+          <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-14 w-auto" />
+        </h1>
         <form onSubmit={submit} className="pp-frame flex flex-col gap-4 p-8">
           <h2 className="pp-heading text-sm">{t("login.codeTitle")}</h2>
           <input

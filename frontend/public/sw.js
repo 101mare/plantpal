@@ -1,11 +1,15 @@
 // PlantPal service worker.
 // App-shell precache for offline launch; NetworkOnly for /api + /auth so private
 // API/auth responses are NEVER cached (consolidation decision K7).
-const CACHE = "plantpal-shell-v1";
+const CACHE = "plantpal-shell-v2";
 const SHELL = [
   "/",
   "/index.html",
-  "/vines.png",
+  "/backgrounds/vines.webp",
+  "/backgrounds/night.webp",
+  "/backgrounds/jungle.webp",
+  "/backgrounds/greenhouse.webp",
+  "/wordmark.png",
   "/placeholder.png",
   "/manifest.webmanifest",
   "/fonts/press-start-2p-latin.woff2",

@@ -20,6 +20,7 @@ export interface Me {
 
 export type Locale = "de" | "en";
 export type Theme = "dark" | "light";
+export type Background = "vines" | "night" | "jungle" | "greenhouse" | "none";
 
 export interface UserSettings {
   email: string;

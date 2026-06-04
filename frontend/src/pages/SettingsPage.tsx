@@ -7,11 +7,11 @@ import { useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
 import { ErrorState, InlineError } from "../components/Feedback";
-import type { Locale, Theme } from "../types";
+import type { Background, Locale, Theme } from "../types";
 
 export function SettingsPage() {
   const { t, locale, setLocale } = useI18n();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, background, setBackground } = useTheme();
   const qc = useQueryClient();
   const nav = useNavigate();
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
@@ -167,6 +167,20 @@ export function SettingsPage() {
               >
                 <option value="dark">{t("settings.theme.dark")}</option>
                 <option value="light">{t("settings.theme.light")}</option>
+              </select>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              {t("settings.background")}
+              <select
+                className="pp-input w-auto"
+                value={background}
+                onChange={(e) => setBackground(e.target.value as Background)}
+              >
+                <option value="vines">{t("settings.bg.vines")}</option>
+                <option value="night">{t("settings.bg.night")}</option>
+                <option value="jungle">{t("settings.bg.jungle")}</option>
+                <option value="greenhouse">{t("settings.bg.greenhouse")}</option>
+                <option value="none">{t("settings.bg.none")}</option>
               </select>
             </div>
           </Section>

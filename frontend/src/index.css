@@ -61,7 +61,6 @@ body,
 body {
   margin: 0;
   background-color: var(--color-pp-bg);
-  background-image: url("/vines.png");
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
@@ -73,6 +72,23 @@ body {
 
 :root[data-theme="light"] body {
   color: #2a2410;
+}
+
+/* Selectable background (Settings → Hintergrund). Default: vines. */
+:root[data-bg="vines"] body {
+  background-image: url("/backgrounds/vines.webp");
+}
+:root[data-bg="night"] body {
+  background-image: url("/backgrounds/night.webp");
+}
+:root[data-bg="jungle"] body {
+  background-image: url("/backgrounds/jungle.webp");
+}
+:root[data-bg="greenhouse"] body {
+  background-image: url("/backgrounds/greenhouse.webp");
+}
+:root[data-bg="none"] body {
+  background-image: none;
 }
 
 /* Pixel-art rendering for plant photos */

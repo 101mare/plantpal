@@ -124,8 +124,8 @@ export function PlantdexPage() {
   return (
     <div className="mx-auto max-w-3xl p-4">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="pp-heading text-lg" tabIndex={-1}>
-          🌱 PlantPal
+        <h1 tabIndex={-1}>
+          <img src="/wordmark.png" alt="PlantPal" className="h-9 w-auto" />
         </h1>
         <nav className="flex gap-2">
           <Link to="/stats" className="pp-btn">
