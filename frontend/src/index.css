@@ -27,6 +27,7 @@
   --color-pp-card-ink: #0a1611;
   --color-pp-thirsty: #2b5540;
   --color-pp-danger: #ef6d5a;
+  --halo: #0a1611; /* base-bg colour for the on-canvas text halo (contrast floor over the wallpaper) */
   --font-pixel: "Press Start 2P", "VT323", ui-monospace, monospace;
 }
 
@@ -41,6 +42,7 @@
   --color-pp-card-ink: #2a2410;
   --color-pp-thirsty: #dde6cb;
   --color-pp-danger: #b3261e;
+  --halo: #f3efe2; /* parchment halo so dark-gold headings stay readable over the light watermark */
 }
 
 html,
@@ -66,7 +68,8 @@ body {
      upscaled), so it stays sharp. */
   background-repeat: repeat;
   background-size: 520px;
-  background-attachment: fixed;
+  /* No background-attachment: fixed — iOS Safari mis-sizes/janks fixed backgrounds (WebKit
+     #275247); a repeating tile already gives even density, so it just scrolls with the page. */
   color: #e8f0e3;
   font-family: var(--font-pixel);
   -webkit-font-smoothing: none;
@@ -115,18 +118,19 @@ img[alt="PlantPal"] {
   background-image: url("/backgrounds/vines.webp");
 }
 
-/* Light theme: the same wallpaper rendered as a faint sepia watermark on parchment, so the
-   dark-gold pixel headings on the canvas stay readable (the bold pixel font ≥14px counts as
-   large text → 3:1; the watermark keeps ≥3.5×). The dark tones above are a dark-mode feature;
-   in light theme every Ranken choice shows this one parchment watermark. */
+/* Light theme: the same wallpaper as a faint sepia watermark on parchment. These pixel headings
+   are weight-400 NORMAL text (Press Start 2P ships no bold face), not large text, so they need
+   4.5:1 — the parchment-coloured halo on .pp-heading (text-shadow) gives on-canvas glyphs that
+   contrast floor over the watermark (WCAG 1.4.3). The dark tones above are a dark-mode feature;
+   in light theme every Ranken choice shows this one watermark. */
 :root[data-theme="light"][data-bg^="vines"] body {
   background-image: url("/backgrounds/vines-light.webp");
 }
 
 /* Pixel-art rendering for plant photos */
 .pixelated {
+  image-rendering: crisp-edges; /* fallback first; the standard nearest-neighbour value wins below */
   image-rendering: pixelated;
-  image-rendering: crisp-edges;
 }
 
 /* Chunky retro borders */
@@ -173,6 +177,25 @@ img[alt="PlantPal"] {
   color: var(--color-pp-gold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  /* Halo in the base background colour gives on-canvas headings a >=4.5:1 contrast floor over the
+     tiled wallpaper / light-mode watermark (WCAG 1.4.3). Inside panels it blends in and is invisible. */
+  text-shadow:
+    0 0 2px var(--halo),
+    1px 1px 0 var(--halo),
+    -1px -1px 0 var(--halo),
+    1px -1px 0 var(--halo),
+    -1px 1px 0 var(--halo);
+}
+
+/* Same halo for non-heading text that can sit directly on the wallpaper (e.g. an on-canvas
+   inline error) — opt in via the pp-halo class. */
+.pp-halo {
+  text-shadow:
+    0 0 2px var(--halo),
+    1px 1px 0 var(--halo),
+    -1px -1px 0 var(--halo),
+    1px -1px 0 var(--halo),
+    -1px 1px 0 var(--halo);
 }
 
 .pp-input {

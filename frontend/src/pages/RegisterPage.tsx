@@ -32,9 +32,10 @@ export function RegisterPage() {
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="pp-frame p-8">
-          <h1 className="pp-heading mb-6 text-center text-lg" tabIndex={-1}>
-            🌿 {t("register.title")}
+          <h1 className="mb-4 text-center" tabIndex={-1}>
+            <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-12 w-auto" />
           </h1>
+          <h2 className="pp-heading mb-6 text-center text-sm">{t("register.title")}</h2>
           {!token ? (
             <p className="text-center text-sm">{t("register.noToken")}</p>
           ) : done ? (

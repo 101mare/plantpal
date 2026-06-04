@@ -31,6 +31,8 @@ export function PlantdexPage() {
   const [pendingDelete, setPendingDelete] = useState<Set<number>>(new Set());
   const [actionError, setActionError] = useState<unknown>(null);
   const deleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // Ids whose real DELETE already started (timer fired) — undo can no longer cancel these.
+  const committingRef = useRef<Set<number>>(new Set());
 
   // Clear pending delete timers on unmount so a delayed delete can't fire after we leave.
   useEffect(() => {
@@ -66,6 +68,9 @@ export function PlantdexPage() {
   }
 
   function handleUndo(id: number) {
+    // Timer already fired and the DELETE is in flight — too late to undo; don't falsely announce
+    // "restored" while the plant is actually being deleted (review finding #6).
+    if (committingRef.current.has(id)) return;
     const tid = deleteTimers.current.get(id);
     if (tid) clearTimeout(tid);
     deleteTimers.current.delete(id);
@@ -82,6 +87,7 @@ export function PlantdexPage() {
     announce(t("plant.deleted")); // screen-reader cue; sighted users see the undo card appear
     const timer = setTimeout(() => {
       deleteTimers.current.delete(plant.id);
+      committingRef.current.add(plant.id); // delete is now in flight — undo can't cancel it anymore
       api
         .deletePlant(plant.id)
         .then(() => {
@@ -89,7 +95,10 @@ export function PlantdexPage() {
           qc.invalidateQueries({ queryKey: ["stats"] });
         })
         .catch((err) => setActionError(err))
-        .finally(() => unmarkPending(plant.id));
+        .finally(() => {
+          committingRef.current.delete(plant.id);
+          unmarkPending(plant.id);
+        });
     }, 5000);
     deleteTimers.current.set(plant.id, timer);
   }
@@ -151,7 +160,7 @@ export function PlantdexPage() {
         <ErrorState onRetry={() => qc.invalidateQueries({ queryKey: ["plants"] })} />
       ) : (plants ?? []).length === 0 ? (
         <div className="pp-frame p-8 text-center text-sm">
-          <img src="/mascot.webp" alt="" className="mx-auto mb-4 w-28" />
+          <img src="/mascot.webp" alt="" className="mx-auto mb-4 w-7" />
           <p className="pp-heading mb-2 text-sm">{t("empty.title")}</p>
           <p className="mb-4 opacity-70">{t("empty.hint")}</p>
           <button type="button" className="pp-btn" onClick={() => setAdding(true)}>
@@ -160,7 +169,7 @@ export function PlantdexPage() {
         </div>
       ) : (
         <>
-          <InlineError error={actionError} className="mb-3 text-center" />
+          <InlineError error={actionError} className="mb-3 text-center pp-halo" />
           <ThirstySection plants={thirsty} onWater={water.mutate} wateringId={wateringId} />
 
           {/* Search + sort share one row; the "thirsty only" filter was dropped — thirsty plants

@@ -487,8 +487,9 @@ der mit dem finalen Maskottchen-basierten Design ersetzt werden soll.
 | **Apple-Touch-Icon** | `frontend/public/apple-touch-icon.png` | ⚠️ Temp | 180×180 PNG, kein transparenter Rand (iOS rundet selbst). |
 | **Favicon** | — (fehlt) | ❌ Offen | Empfohlen: 32×32 + 16×16 (ICO oder PNG) aus Variante B (Kopf+Augen, reduziert). |
 | **Placeholder (Pflanze ohne Foto)** | `frontend/public/placeholder.png` | ⚠️ Temp | 96×96 PNG (Plantdex-Kanon-Größe). Idee: kleiner Pal als „Foto folgt"-Platzhalter. |
-| **Hintergrund-Ranken** | `frontend/public/vines.png` | ✅ Vorhanden | 1800×1207 PNG, als `background-size: cover; fixed`. Dezentes Ranken-Muster. |
-| **Wortmarke** | — (fehlt) | ❌ Offen | „PlantPal" in Press Start 2P; Versionen für hell/dunkel + transparent; optional mit Pal-Kopf als Präfix. |
+| **Hintergrund-Ranken** | `frontend/public/backgrounds/vines.webp` | ✅ Vorhanden | 1100×738 WebP (freigestellt/transparent), nahtlose Kachel via `background-repeat: repeat; background-size: 520px` (kein `fixed` mehr). Dahinter wählbarer Vollton (`data-bg`: vines/-tiefsee/-tanne/-moos/-smaragd/-espresso/-burgund / none). |
+| **Ranken-Watermark (Light)** | `frontend/public/backgrounds/vines-light.webp` | ✅ Vorhanden | Sepia-Watermark für den Light-Mode (Pergament), kontrast-getunt. |
+| **Wortmarke** | `frontend/public/wordmark.png` | ✅ Vorhanden | „PlantPal"-Pixel-Schriftzug (transparent), auf Login/Login-Code/Register/App-Header statt Text. |
 | **PWA-Manifest** | `frontend/public/manifest.webmanifest` | ✅ Vorhanden | `name/short_name: PlantPal`, `theme/background: #0d2018`, `display: standalone`, `lang: de`. |
 | **Pixel-Fonts** | `frontend/public/fonts/{press-start-2p,vt323}-latin.woff2` | ✅ Vorhanden | Selbst-gehostet, latin-Subset (äöüß). |
 
