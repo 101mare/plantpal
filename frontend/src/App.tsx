@@ -54,15 +54,35 @@ function useOnline(): boolean {
   return online;
 }
 
+/** A new service-worker bundle finished installing (event fired from main.tsx). We show a
+ *  persistent banner with a manual reload rather than swapping bundles mid-session (A11Y-07). */
+function useUpdateAvailable(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const onUpdate = () => setReady(true);
+    window.addEventListener("pp:update-available", onUpdate);
+    return () => window.removeEventListener("pp:update-available", onUpdate);
+  }, []);
+  return ready;
+}
+
 export function App() {
   const { t } = useI18n();
   const online = useOnline();
+  const updateReady = useUpdateAvailable();
   return (
     <>
       <a href="#main" className="pp-skip pp-btn">
         {t("a11y.skip")}
       </a>
       {!online && <Banner message={t("error.offline")} />}
+      {updateReady && (
+        <Banner
+          tone="neutral"
+          message={t("update.available")}
+          action={{ label: t("update.reload"), onClick: () => window.location.reload() }}
+        />
+      )}
       <RouteFocus />
       <ErrorBoundary>
         <main id="main" className="h-full">

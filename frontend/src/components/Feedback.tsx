@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { errorText, useI18n } from "../i18n";
 
 /**
@@ -18,22 +18,87 @@ export function InlineError({ error, className = "" }: { error: unknown; classNa
   );
 }
 
-/** Persistent top banner for global states (offline, system). Not auto-dismissing. */
-export function Banner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
+/**
+ * Persistent top banner for global states (offline, system, app-update). Not auto-dismissing —
+ * it stays as long as the state holds, the opposite of an ephemeral toast.
+ *  - tone="danger"  red, role=alert    (offline / something broke)
+ *  - tone="neutral" green, role=status (a non-error prompt like "update available")
+ * An optional `action` renders an inline button (e.g. "Reload") right in the banner.
+ */
+export function Banner({
+  message,
+  onDismiss,
+  action,
+  tone = "danger",
+}: {
+  message: string;
+  onDismiss?: () => void;
+  action?: { label: string; onClick: () => void };
+  tone?: "danger" | "neutral";
+}) {
   const { t } = useI18n();
   return (
     <div
-      role="alert"
+      role={tone === "danger" ? "alert" : "status"}
       aria-live="polite"
-      className="flex items-center justify-center gap-3 bg-pp-danger px-4 py-1.5 text-center text-[11px] font-bold text-white"
+      className={`flex items-center justify-center gap-3 px-4 py-1.5 text-center text-[11px] font-bold text-white ${
+        tone === "danger" ? "bg-pp-danger" : "bg-pp-border"
+      }`}
       style={{ paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
     >
       <span>{message}</span>
+      {action && (
+        <button type="button" onClick={action.onClick} className="underline underline-offset-2">
+          {action.label}
+        </button>
+      )}
       {onDismiss && (
         <button type="button" onClick={onDismiss} aria-label={t("error.dismiss")} className="px-1">
           ✕
         </button>
       )}
+    </div>
+  );
+}
+
+const ANNOUNCE_EVENT = "pp:announce";
+
+/**
+ * Fire a screen-reader announcement *without* showing any visible popup. Successful actions are
+ * now silent for sighted users — the UI change itself (card turns green, modal closes, new card
+ * appears) is the confirmation — but screen-reader users still need to hear that it worked. Call
+ * this with an already-translated string; the single <LiveRegion> at the app root speaks it.
+ * (Research: NN/G / Apple HIG — prefer nonintrusive status; Sara Soueidan — mirror silent UI
+ * changes into an aria-live region or they're invisible to assistive tech.)
+ */
+export function announce(message: string) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(ANNOUNCE_EVENT, { detail: message }));
+  }
+}
+
+/** Single visually-hidden polite live region. Mount once at the app root. */
+export function LiveRegion() {
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const onAnnounce = (e: Event) => {
+      const next = (e as CustomEvent<string>).detail;
+      // Clear first, then set on the next tick, so re-announcing the same text (e.g. watering a
+      // second plant) is still spoken — assistive tech ignores an unchanged live-region value.
+      setMessage("");
+      clearTimeout(timer);
+      timer = setTimeout(() => setMessage(next), 50);
+    };
+    window.addEventListener(ANNOUNCE_EVENT, onAnnounce);
+    return () => {
+      window.removeEventListener(ANNOUNCE_EVENT, onAnnounce);
+      clearTimeout(timer);
+    };
+  }, []);
+  return (
+    <div role="status" aria-live="polite" className="sr-only">
+      {message}
     </div>
   );
 }

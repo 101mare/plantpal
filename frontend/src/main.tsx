@@ -2,11 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
-import { Toaster, toast } from "sonner";
 import { ApiError } from "./api";
 import { App } from "./App";
+import { LiveRegion } from "./components/Feedback";
 import { I18nProvider, detectLocale } from "./i18n";
-import { ThemeProvider, detectBackground, detectTheme, useTheme } from "./theme";
+import { ThemeProvider, detectBackground, detectTheme } from "./theme";
 import "./index.css";
 
 // Apply persisted theme + language before first paint (no flash).
@@ -25,14 +25,8 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
           const sw = reg.installing;
           sw?.addEventListener("statechange", () => {
             if (sw.state === "installed" && navigator.serviceWorker.controller) {
-              const de = detectLocale() === "de";
-              toast(de ? "Update verfügbar" : "Update available", {
-                duration: Infinity,
-                action: {
-                  label: de ? "Neu laden" : "Reload",
-                  onClick: () => window.location.reload(),
-                },
-              });
+              // Hand off to React (App renders a persistent banner) instead of a floating toast.
+              window.dispatchEvent(new CustomEvent("pp:update-available"));
             }
           });
         });
@@ -61,11 +55,6 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 
-function ThemedToaster() {
-  const { theme } = useTheme();
-  return <Toaster theme={theme} position="top-center" richColors />;
-}
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
@@ -73,7 +62,7 @@ createRoot(document.getElementById("root")!).render(
         <I18nProvider>
           <BrowserRouter>
             <App />
-            <ThemedToaster />
+            <LiveRegion />
           </BrowserRouter>
         </I18nProvider>
       </ThemeProvider>

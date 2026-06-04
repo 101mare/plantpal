@@ -61,13 +61,20 @@ body,
 body {
   margin: 0;
   background-color: var(--color-pp-bg);
-  background-size: cover;
-  background-position: center top;
-  background-repeat: no-repeat;
+  /* Ranken render as a seamless, repeating tile (a fixed-size wallpaper) rather than one
+     cover-cropped image — even density on every screen, and the tile is downscaled (never
+     upscaled), so it stays sharp. */
+  background-repeat: repeat;
+  background-size: 520px;
   background-attachment: fixed;
   color: #e8f0e3;
   font-family: var(--font-pixel);
   -webkit-font-smoothing: none;
+}
+
+/* The wordmark is a smooth hi-res logo, not pixel art — don't pixelate it when scaled. */
+img[alt="PlantPal"] {
+  image-rendering: auto;
 }
 
 :root[data-theme="light"] body {
@@ -75,20 +82,45 @@ body {
 }
 
 /* Selectable background (Settings → Hintergrund). Default: vines. */
-:root[data-bg="vines"] body {
+/* The Ranken wallpaper is a dark-theme feature: one sharp, cut-out overlay (its backdrop is
+   transparent) sits over a solid tone. The vines stay pixel-crisp and the backdrop is a plain
+   CSS colour → zero upscaling blur. In light theme the body stays plain parchment (no overlay)
+   so on-canvas headings keep full contrast (the tones are deliberately dark). */
+:root[data-theme="dark"][data-bg="vines"] body {
+  background-color: #0d2018;
   background-image: url("/backgrounds/vines.webp");
 }
-:root[data-bg="night"] body {
-  background-image: url("/backgrounds/night.webp");
+:root[data-theme="dark"][data-bg="vines-tiefsee"] body {
+  background-color: #08201c;
+  background-image: url("/backgrounds/vines.webp");
 }
-:root[data-bg="jungle"] body {
-  background-image: url("/backgrounds/jungle.webp");
+:root[data-theme="dark"][data-bg="vines-tanne"] body {
+  background-color: #0a1c14;
+  background-image: url("/backgrounds/vines.webp");
 }
-:root[data-bg="greenhouse"] body {
-  background-image: url("/backgrounds/greenhouse.webp");
+:root[data-theme="dark"][data-bg="vines-moos"] body {
+  background-color: #141f0c;
+  background-image: url("/backgrounds/vines.webp");
 }
-:root[data-bg="none"] body {
-  background-image: none;
+:root[data-theme="dark"][data-bg="vines-smaragd"] body {
+  background-color: #214f3c;
+  background-image: url("/backgrounds/vines.webp");
+}
+:root[data-theme="dark"][data-bg="vines-espresso"] body {
+  background-color: #1d140d;
+  background-image: url("/backgrounds/vines.webp");
+}
+:root[data-theme="dark"][data-bg="vines-burgund"] body {
+  background-color: #200f14;
+  background-image: url("/backgrounds/vines.webp");
+}
+
+/* Light theme: the same wallpaper rendered as a faint sepia watermark on parchment, so the
+   dark-gold pixel headings on the canvas stay readable (the bold pixel font ≥14px counts as
+   large text → 3:1; the watermark keeps ≥3.5×). The dark tones above are a dark-mode feature;
+   in light theme every Ranken choice shows this one parchment watermark. */
+:root[data-theme="light"][data-bg^="vines"] body {
+  background-image: url("/backgrounds/vines-light.webp");
 }
 
 /* Pixel-art rendering for plant photos */

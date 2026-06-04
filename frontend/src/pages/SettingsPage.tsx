@@ -1,12 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
-import { ErrorState, InlineError } from "../components/Feedback";
+import { ErrorState, InlineError, announce } from "../components/Feedback";
 import type { Background, Locale, Theme } from "../types";
 
 export function SettingsPage() {
@@ -21,11 +20,13 @@ export function SettingsPage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [copied, setCopied] = useState(false);
   const patch = useMutation({
     mutationFn: api.updateSettings,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings"] });
-      toast.success(t("settings.saved"));
+      // No toast — the toggle/select already shows its new value; announce for screen readers.
+      announce(t("settings.saved"));
     },
   });
   const logout = useMutation({
@@ -60,7 +61,9 @@ export function SettingsPage() {
   const changeEmail = useMutation({
     mutationFn: () => api.requestEmailChange(newEmail),
     onSuccess: () => {
-      toast.success(t("settings.emailChangeSent"));
+      // Nothing visible changes here (a mail goes out elsewhere), so we keep a persistent inline
+      // confirmation below the button — see changeEmail.isSuccess in the JSX. Announce for SR too.
+      announce(t("settings.emailChangeSent"));
       setNewEmail("");
     },
   });
@@ -112,6 +115,11 @@ export function SettingsPage() {
                   {t("settings.sendVerify")}
                 </button>
                 <InlineError error={changeEmail.error} />
+                {changeEmail.isSuccess && (
+                  <p role="status" className="text-[11px] leading-snug text-pp-gold">
+                    ✓ {t("settings.emailChangeSent")}
+                  </p>
+                )}
               </div>
             </details>
           </Section>
@@ -177,9 +185,12 @@ export function SettingsPage() {
                 onChange={(e) => setBackground(e.target.value as Background)}
               >
                 <option value="vines">{t("settings.bg.vines")}</option>
-                <option value="night">{t("settings.bg.night")}</option>
-                <option value="jungle">{t("settings.bg.jungle")}</option>
-                <option value="greenhouse">{t("settings.bg.greenhouse")}</option>
+                <option value="vines-tiefsee">{t("settings.bg.tiefsee")}</option>
+                <option value="vines-tanne">{t("settings.bg.tanne")}</option>
+                <option value="vines-moos">{t("settings.bg.moos")}</option>
+                <option value="vines-smaragd">{t("settings.bg.smaragd")}</option>
+                <option value="vines-espresso">{t("settings.bg.espresso")}</option>
+                <option value="vines-burgund">{t("settings.bg.burgund")}</option>
                 <option value="none">{t("settings.bg.none")}</option>
               </select>
             </div>
@@ -210,10 +221,13 @@ export function SettingsPage() {
                   className="pp-btn"
                   onClick={() => {
                     navigator.clipboard?.writeText(inviteUrl);
-                    toast.success(t("settings.copied"));
+                    // Inline confirmation at the trigger: the label briefly flips to "Copied ✓".
+                    setCopied(true);
+                    announce(t("settings.copied"));
+                    window.setTimeout(() => setCopied(false), 1500);
                   }}
                 >
-                  {t("settings.copy")}
+                  {copied ? `✓ ${t("settings.copied")}` : t("settings.copy")}
                 </button>
               </div>
             )}

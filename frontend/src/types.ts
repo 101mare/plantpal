@@ -20,7 +20,15 @@ export interface Me {
 
 export type Locale = "de" | "en";
 export type Theme = "dark" | "light";
-export type Background = "vines" | "night" | "jungle" | "greenhouse" | "none";
+export type Background =
+  | "vines"
+  | "vines-tiefsee"
+  | "vines-tanne"
+  | "vines-moos"
+  | "vines-smaragd"
+  | "vines-espresso"
+  | "vines-burgund"
+  | "none";
 
 export interface UserSettings {
   email: string;

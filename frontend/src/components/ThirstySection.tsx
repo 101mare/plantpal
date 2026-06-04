@@ -12,12 +12,8 @@ export function ThirstySection({
 }) {
   const { t } = useI18n();
   if (plants.length === 0) {
-    return (
-      <div className="pp-frame mb-6 p-4">
-        <h2 className="pp-heading mb-2 text-sm">{t("thirsty.title")}</h2>
-        <p className="text-xs opacity-80">{t("thirsty.allWatered")}</p>
-      </div>
-    );
+    // All watered: a slim one-line note instead of a full framed section, to save vertical space.
+    return <p className="mb-6 py-1 text-center text-xs opacity-70">{t("thirsty.allWatered")}</p>;
   }
   return (
     <div className="pp-frame mb-6 p-4">

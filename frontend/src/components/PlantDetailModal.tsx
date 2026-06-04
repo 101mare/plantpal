@@ -1,11 +1,10 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 import { Backdrop, Field } from "./AddPlantModal";
-import { InlineError } from "./Feedback";
+import { InlineError, announce } from "./Feedback";
 import { daysSince, plantStatus } from "../status";
 
 export function PlantDetailModal({
@@ -28,7 +27,8 @@ export function PlantDetailModal({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plants"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
-      toast.success(t("plant.watered"));
+      // No toast — closing the modal reveals the now-fresh card; announce for screen readers.
+      announce(t("plant.watered"));
       onClose();
     },
   });
@@ -42,7 +42,8 @@ export function PlantDetailModal({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plants"] });
       setImgBust((n) => n + 1); // refresh image in place, keep modal open (UX-14)
-      toast.success(t("plant.photoReplaced"));
+      // The swapped-in image is the visible confirmation; announce for screen readers.
+      announce(t("plant.photoReplaced"));
     },
   });
 
@@ -164,7 +165,8 @@ function EditView({
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plants"] });
-      toast.success(t("plant.saved"));
+      // No toast — closing the modal reveals the updated card; announce for screen readers.
+      announce(t("plant.saved"));
       onClose();
     },
   });

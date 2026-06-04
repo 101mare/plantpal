@@ -13,7 +13,16 @@ export function detectTheme(): Theme {
   return localStorage.getItem("pp_theme") === "light" ? "light" : "dark";
 }
 
-export const BACKGROUNDS: Background[] = ["vines", "night", "jungle", "greenhouse", "none"];
+export const BACKGROUNDS: Background[] = [
+  "vines",
+  "vines-tiefsee",
+  "vines-tanne",
+  "vines-moos",
+  "vines-smaragd",
+  "vines-espresso",
+  "vines-burgund",
+  "none",
+];
 
 export function detectBackground(): Background {
   const v = localStorage.getItem("pp_bg") ?? "";

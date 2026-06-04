@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { api } from "../api";
 import { useI18n } from "../i18n";
-import { InlineError } from "./Feedback";
+import { InlineError, announce } from "./Feedback";
 
 export function AddPlantModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -31,7 +30,8 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plants"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
-      toast.success(t("plant.added"));
+      // No toast — closing the modal reveals the new card in the list; announce for screen readers.
+      announce(t("plant.added"));
       onClose();
     },
   });
