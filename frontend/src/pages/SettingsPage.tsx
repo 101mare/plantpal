@@ -6,7 +6,7 @@ import { api } from "../api";
 import { useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
-import { InlineError } from "../components/Feedback";
+import { ErrorState, InlineError } from "../components/Feedback";
 import type { Locale, Theme } from "../types";
 
 export function SettingsPage() {
@@ -14,8 +14,10 @@ export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const qc = useQueryClient();
   const nav = useNavigate();
-  const { data: s } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
-  const { data: invites } = useQuery({ queryKey: ["invites"], queryFn: api.listInvites });
+  const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
+  const s = settingsQuery.data;
+  const invitesQuery = useQuery({ queryKey: ["invites"], queryFn: api.listInvites });
+  const invites = invitesQuery.data;
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
@@ -85,175 +87,194 @@ export function SettingsPage() {
         </Link>
       </header>
 
-      <Section title={t("settings.account")}>
-        <p className="mb-3 break-all opacity-80">{s?.email}</p>
-        <details>
-          <summary className="cursor-pointer text-pp-gold">{t("settings.changeEmail")}</summary>
-          <div className="mt-2 flex flex-col gap-2">
-            <input
-              type="email"
-              className="pp-input"
-              placeholder={t("settings.newEmail")}
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-            />
-            <button
-              type="button"
-              className="pp-btn"
-              disabled={!newEmail || changeEmail.isPending}
-              onClick={() => changeEmail.mutate()}
-            >
-              {t("settings.sendVerify")}
-            </button>
-            <InlineError error={changeEmail.error} />
-          </div>
-        </details>
-      </Section>
-
-      <Section title={t("settings.emailReminders")}>
-        <label className="flex items-center justify-between gap-3">
-          {t("settings.emailReminders")}
-          <input
-            type="checkbox"
-            className="h-6 w-6"
-            checked={s?.email_reminders_enabled ?? false}
-            onChange={(e) => patch.mutate({ email_reminders_enabled: e.target.checked })}
-          />
-        </label>
-        <label className="mt-3 flex items-center justify-between gap-3">
-          {t("settings.reminderHour")}
-          <input
-            type="number"
-            min={0}
-            max={23}
-            inputMode="numeric"
-            className="pp-input w-20"
-            key={s?.reminder_hour ?? 8}
-            defaultValue={s?.reminder_hour ?? 8}
-            onBlur={(e) => {
-              const h = Number(e.target.value);
-              if (Number.isInteger(h) && h >= 0 && h <= 23) patch.mutate({ reminder_hour: h });
-              else e.target.value = String(s?.reminder_hour ?? 8); // reject NaN/out-of-range
-            }}
-          />
-        </label>
-        <InlineError error={patch.error} className="mt-2" />
-      </Section>
-
-      <Section title={`${t("settings.language")} / ${t("settings.theme")}`}>
-        <div className="flex items-center justify-between gap-3">
-          {t("settings.language")}
-          <select
-            className="pp-input w-auto"
-            value={locale}
-            onChange={(e) => pickLocale(e.target.value as Locale)}
-          >
-            <option value="de">Deutsch</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          {t("settings.theme")}
-          <select
-            className="pp-input w-auto"
-            value={theme}
-            onChange={(e) => pickTheme(e.target.value as Theme)}
-          >
-            <option value="dark">{t("settings.theme.dark")}</option>
-            <option value="light">{t("settings.theme.light")}</option>
-          </select>
-        </div>
-      </Section>
-
-      <Section title={t("settings.invites")}>
-        <p className="mb-2 opacity-70">{t("settings.inviteQuota", { n: s?.invite_quota ?? 0 })}</p>
-        <button
-          type="button"
-          className="pp-btn w-full"
-          disabled={createInvite.isPending}
-          onClick={() => createInvite.mutate()}
-        >
-          {t("settings.createInvite")}
-        </button>
-        {inviteUrl && (
-          <div className="mt-2 flex gap-2">
-            <input
-              readOnly
-              value={inviteUrl}
-              onFocus={(e) => e.target.select()}
-              className="pp-input flex-1 text-[10px]"
-            />
-            <button
-              type="button"
-              className="pp-btn"
-              onClick={() => {
-                navigator.clipboard?.writeText(inviteUrl);
-                toast.success(t("settings.copied"));
-              }}
-            >
-              {t("settings.copy")}
-            </button>
-          </div>
-        )}
-        <ul className="mt-3 flex flex-col gap-1">
-          {(invites ?? []).map((inv) => (
-            <li key={inv.id} className="flex items-center justify-between gap-2 text-[10px]">
-              <span>
-                {inv.used_count}/{inv.max_uses} {t("settings.inviteUses")} · {inv.status}
-              </span>
-              {inv.status === "active" && (
-                <button type="button" className="underline" onClick={() => revoke.mutate(inv.id)}>
-                  {t("settings.revoke")}
+      {settingsQuery.isError ? (
+        <ErrorState error={settingsQuery.error} onRetry={() => settingsQuery.refetch()} />
+      ) : (
+        <>
+          <Section title={t("settings.account")}>
+            <p className="mb-3 break-all opacity-80">{s?.email}</p>
+            <details>
+              <summary className="cursor-pointer text-pp-gold">{t("settings.changeEmail")}</summary>
+              <div className="mt-2 flex flex-col gap-2">
+                <input
+                  type="email"
+                  className="pp-input"
+                  placeholder={t("settings.newEmail")}
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="pp-btn"
+                  disabled={!newEmail || changeEmail.isPending}
+                  onClick={() => changeEmail.mutate()}
+                >
+                  {t("settings.sendVerify")}
                 </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        <InlineError error={createInvite.error ?? revoke.error} className="mt-2" />
-      </Section>
+                <InlineError error={changeEmail.error} />
+              </div>
+            </details>
+          </Section>
 
-      <div className="flex flex-col gap-2">
-        <a href={api.exportUrl()} className="pp-btn text-center" download>
-          {t("settings.export")}
-        </a>
-        <button
-          type="button"
-          className="pp-btn"
-          disabled={logout.isPending}
-          onClick={() => logout.mutate()}
-        >
-          {logout.isPending ? "…" : t("settings.logout")}
-        </button>
-        <InlineError error={logout.error} />
-        <button
-          type="button"
-          className="pp-btn"
-          style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
-          onClick={() => setConfirmDel(true)}
-        >
-          {t("settings.deleteAccount")}
-        </button>
-      </div>
+          <Section title={t("settings.emailReminders")}>
+            <label className="flex items-center justify-between gap-3">
+              {t("settings.emailReminders")}
+              <input
+                type="checkbox"
+                className="h-6 w-6"
+                checked={s?.email_reminders_enabled ?? false}
+                onChange={(e) => patch.mutate({ email_reminders_enabled: e.target.checked })}
+              />
+            </label>
+            <label className="mt-3 flex items-center justify-between gap-3">
+              {t("settings.reminderHour")}
+              <input
+                type="number"
+                min={0}
+                max={23}
+                inputMode="numeric"
+                className="pp-input w-20"
+                key={s?.reminder_hour ?? 8}
+                defaultValue={s?.reminder_hour ?? 8}
+                onBlur={(e) => {
+                  const h = Number(e.target.value);
+                  if (Number.isInteger(h) && h >= 0 && h <= 23) patch.mutate({ reminder_hour: h });
+                  else e.target.value = String(s?.reminder_hour ?? 8); // reject NaN/out-of-range
+                }}
+              />
+            </label>
+            <InlineError error={patch.error} className="mt-2" />
+          </Section>
 
-      {confirmDel && (
-        <Backdrop onClose={() => setConfirmDel(false)}>
-          <p className="mb-4 text-center text-sm">{t("settings.deleteConfirm")}</p>
-          <div className="flex gap-2">
+          <Section title={`${t("settings.language")} / ${t("settings.theme")}`}>
+            <div className="flex items-center justify-between gap-3">
+              {t("settings.language")}
+              <select
+                className="pp-input w-auto"
+                value={locale}
+                onChange={(e) => pickLocale(e.target.value as Locale)}
+              >
+                <option value="de">Deutsch</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              {t("settings.theme")}
+              <select
+                className="pp-input w-auto"
+                value={theme}
+                onChange={(e) => pickTheme(e.target.value as Theme)}
+              >
+                <option value="dark">{t("settings.theme.dark")}</option>
+                <option value="light">{t("settings.theme.light")}</option>
+              </select>
+            </div>
+          </Section>
+
+          <Section title={t("settings.invites")}>
+            <p className="mb-2 opacity-70">
+              {t("settings.inviteQuota", { n: s?.invite_quota ?? 0 })}
+            </p>
             <button
               type="button"
-              className="pp-btn flex-1"
+              className="pp-btn w-full"
+              disabled={createInvite.isPending}
+              onClick={() => createInvite.mutate()}
+            >
+              {t("settings.createInvite")}
+            </button>
+            {inviteUrl && (
+              <div className="mt-2 flex gap-2">
+                <input
+                  readOnly
+                  value={inviteUrl}
+                  onFocus={(e) => e.target.select()}
+                  className="pp-input flex-1 text-[10px]"
+                />
+                <button
+                  type="button"
+                  className="pp-btn"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(inviteUrl);
+                    toast.success(t("settings.copied"));
+                  }}
+                >
+                  {t("settings.copy")}
+                </button>
+              </div>
+            )}
+            <ul className="mt-3 flex flex-col gap-1">
+              {(invites ?? []).map((inv) => (
+                <li key={inv.id} className="flex items-center justify-between gap-2 text-[10px]">
+                  <span>
+                    {inv.used_count}/{inv.max_uses} {t("settings.inviteUses")} · {inv.status}
+                  </span>
+                  {inv.status === "active" && (
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => revoke.mutate(inv.id)}
+                    >
+                      {t("settings.revoke")}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <InlineError
+              error={invitesQuery.error ?? createInvite.error ?? revoke.error}
+              className="mt-2"
+            />
+          </Section>
+
+          <div className="flex flex-col gap-2">
+            <a href={api.exportUrl()} className="pp-btn text-center" download>
+              {t("settings.export")}
+            </a>
+            <button
+              type="button"
+              className="pp-btn"
+              disabled={logout.isPending}
+              onClick={() => logout.mutate()}
+            >
+              {logout.isPending ? "…" : t("settings.logout")}
+            </button>
+            <InlineError error={logout.error} />
+            <button
+              type="button"
+              className="pp-btn"
               style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
-              disabled={removeAccount.isPending}
-              onClick={() => removeAccount.mutate()}
+              onClick={() => setConfirmDel(true)}
             >
               {t("settings.deleteAccount")}
             </button>
-            <button type="button" className="pp-btn flex-1" onClick={() => setConfirmDel(false)}>
-              {t("plant.cancel")}
-            </button>
           </div>
-          <InlineError error={removeAccount.error} className="mt-3 text-center" />
-        </Backdrop>
+
+          {confirmDel && (
+            <Backdrop onClose={() => setConfirmDel(false)}>
+              <p className="mb-4 text-center text-sm">{t("settings.deleteConfirm")}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="pp-btn flex-1"
+                  style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
+                  disabled={removeAccount.isPending}
+                  onClick={() => removeAccount.mutate()}
+                >
+                  {t("settings.deleteAccount")}
+                </button>
+                <button
+                  type="button"
+                  className="pp-btn flex-1"
+                  onClick={() => setConfirmDel(false)}
+                >
+                  {t("plant.cancel")}
+                </button>
+              </div>
+              <InlineError error={removeAccount.error} className="mt-3 text-center" />
+            </Backdrop>
+          )}
+        </>
       )}
     </div>
   );

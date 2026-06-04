@@ -126,6 +126,14 @@ const resources: Record<Locale, Record<string, string>> = {
     "error.code.unsupported_media_type":
       "Dieses Format können wir nicht verarbeiten. Bitte JPG, PNG oder WebP.",
     "error.code.user_disabled": "Dieses Konto ist deaktiviert.",
+    "error.code.invalid_invite": "Dieser Einladungs-Link ist ungültig.",
+    "error.code.invite_expired": "Dieser Einladungs-Link ist abgelaufen.",
+    "error.code.invite_revoked": "Dieser Einladungs-Link wurde zurückgezogen.",
+    "error.code.invite_exhausted": "Dieser Einladungs-Link wurde schon vollständig genutzt.",
+    "error.code.user_exists": "Für diese E-Mail gibt es schon ein Konto. Melde dich einfach an.",
+    "error.code.user_not_found": "Wir konnten kein Konto dazu finden.",
+    "error.code.email_taken": "Diese E-Mail-Adresse ist schon vergeben.",
+    "error.code.change_expired": "Diese Anfrage ist abgelaufen. Bitte starte den Wechsel neu.",
     "error.offline": "Keine Verbindung. Prüf kurz dein Internet.",
     "error.server": "Etwas ist bei uns schiefgelaufen. Lade die Seite neu.",
     "error.generic": "Etwas ist schiefgelaufen. Bitte versuch es nochmal.",
@@ -252,6 +260,14 @@ const resources: Record<Locale, Record<string, string>> = {
     "error.code.unsupported_media_type":
       "We can't process that format. Please use JPG, PNG or WebP.",
     "error.code.user_disabled": "This account is disabled.",
+    "error.code.invalid_invite": "This invite link isn't valid.",
+    "error.code.invite_expired": "This invite link has expired.",
+    "error.code.invite_revoked": "This invite link was revoked.",
+    "error.code.invite_exhausted": "This invite link has already been fully used.",
+    "error.code.user_exists": "There's already an account for this email. Just sign in.",
+    "error.code.user_not_found": "We couldn't find an account for that.",
+    "error.code.email_taken": "That email address is already taken.",
+    "error.code.change_expired": "This request has expired. Please start the change again.",
     "error.offline": "No connection. Check your internet.",
     "error.server": "Something went wrong on our end. Reload the page.",
     "error.generic": "Something went wrong. Please try again.",
@@ -307,7 +323,7 @@ export function errorText(err: unknown, t: TFn): string {
     if (err.status >= 500) return t("error.server"); // never show raw 5xx detail
     const key = `error.code.${err.code}`;
     const msg = t(key);
-    return msg === key ? err.message : msg;
+    return msg === key ? t("error.generic") : msg; // unknown code → friendly generic, never raw BE text
   }
   // A non-ApiError means the fetch itself failed — almost always network/offline.
   return t(

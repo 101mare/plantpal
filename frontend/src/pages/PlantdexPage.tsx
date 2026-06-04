@@ -68,6 +68,7 @@ export function PlantdexPage() {
   // Soft-delete with undo: hide locally via pendingDelete (survives refetch) + delayed real
   // delete. Undo cancels the timer and un-hides; the timer is also cleared on unmount.
   function handleDelete(plant: Plant) {
+    setActionError(null);
     setPendingDelete((prev) => new Set(prev).add(plant.id));
     const timer = setTimeout(() => {
       deleteTimers.current.delete(plant.id);
