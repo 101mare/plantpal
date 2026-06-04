@@ -60,10 +60,11 @@ async def _send(settings: Settings, to: str, subject: str, html: str, text: str)
 
 
 def _shell(title: str, body_html: str) -> str:
+    # Brand tokens (BRAND.md §4): bg #0d2018, gold #e0b53d.
     return (
-        '<div style="font-family:monospace;background:#1a3d2e;color:#e8f0e3;'
+        '<div style="font-family:monospace;background:#0d2018;color:#e8f0e3;'
         'padding:24px;border-radius:12px;max-width:480px;margin:auto">'
-        f'<h1 style="color:#d4af37;font-size:20px">🌱 {title}</h1>{body_html}</div>'
+        f'<h1 style="color:#e0b53d;font-size:20px">🌱 {title}</h1>{body_html}</div>'
     )
 
 
@@ -79,7 +80,7 @@ def _button(url: str, label: str) -> str:
 def _code_block(code: str, hint: str) -> str:
     return (
         f'<p style="margin-top:16px">{escape(hint)}</p>'
-        f'<p style="font-size:28px;letter-spacing:6px;font-family:monospace;color:#d4af37">'
+        f'<p style="font-size:28px;letter-spacing:6px;font-family:monospace;color:#e0b53d">'
         f"<b>{escape(code)}</b></p>"
     )
 
@@ -88,40 +89,51 @@ def build_magic_link(url: str, code: str | None = None) -> tuple[str, str, str]:
     subject = "Dein PlantPal Login-Link"
     code_html = _code_block(code, "Oder gib diesen Code ein (10 Minuten gültig):") if code else ""
     html = _shell(
-        "PlantPal Login",
-        f"<p>Klicke zum Einloggen. Der Link ist 30 Minuten gültig und einmalig nutzbar.</p>"
+        "Schön, dass du da bist",
+        f"<p>Klick zum Einloggen — der Link gilt 30 Minuten und nur einmal. "
+        f"Deine Pflanzen freuen sich.</p>"
         f"{_button(url, 'Einloggen')}{code_html}",
     )
     code_text = f"\n\nOder Code eingeben (10 min gültig): {code}" if code else ""
-    text = f"PlantPal Login (Link 30 min gültig, einmalig):\n{url}{code_text}"
+    text = f"Dein PlantPal Login-Link (30 min gültig, einmalig):\n{url}{code_text}"
     return subject, html, text
 
 
 def build_invite(url: str) -> tuple[str, str, str]:
-    subject = "Du bist zu PlantPal eingeladen 🌿"
+    subject = "Komm zu PlantPal dazu 🌿"
     html = _shell(
-        "Einladung",
-        f"<p>Du wurdest zu PlantPal eingeladen. Erstelle deinen Account:</p>"
+        "Willkommen in der Familie",
+        f"<p>Jemand möchte dich bei PlantPal dabeihaben. Leg einfach los — "
+        f"deine erste Pflanze wartet schon auf dich.</p>"
         f"{_button(url, 'Account erstellen')}",
     )
-    text = f"Du bist zu PlantPal eingeladen. Account erstellen:\n{url}"
+    text = f"Jemand möchte dich bei PlantPal dabeihaben. Leg los:\n{url}"
     return subject, html, text
 
 
 def build_digest(base_url: str, plants: list[dict]) -> tuple[str, str, str]:
+    # Speaks AS PlantPal, not as a system report (BRAND.md §3, tone 2 — personal).
     n = len(plants)
-    subject = f"🌱 {n} Pflanze{'n' if n != 1 else ''} {'haben' if n != 1 else 'hat'} Durst"
+    subject = (
+        "🌱 Eine von uns hätte gern Wasser" if n == 1 else f"🌱 {n} von uns hätten gern Wasser"
+    )
+
+    def waited(days: int) -> str:
+        if days <= 0:
+            return "ist heute dran"
+        return f"wartet seit {days} {'Tag' if days == 1 else 'Tagen'}"
+
     items_html = "".join(
-        f"<li><b>{escape(str(p['name']))}</b> — {int(p['days_overdue'])} Tag(e) überfällig</li>"
+        f"<li><b>{escape(str(p['name']))}</b> — {waited(int(p['days_overdue']))}</li>"
         for p in plants
     )
     html = _shell(
-        "Gieß-Erinnerung",
-        f"<p>Diese Pflanzen brauchen Wasser:</p><ul>{items_html}</ul>"
-        f"{_button(base_url, 'Zu PlantPal')}",
+        "Kurzer Gruß von PlantPal",
+        f"<p>Hey! Ein paar aus der Familie sind ein bisschen durstig:</p><ul>{items_html}</ul>"
+        f"{_button(base_url, 'Schnell vorbeischauen')}",
     )
-    lines = "\n".join(f"- {p['name']} ({p['days_overdue']}d überfällig)" for p in plants)
-    text = f"Diese Pflanzen brauchen Wasser:\n{lines}\n\n{base_url}"
+    lines = "\n".join(f"- {p['name']} ({waited(int(p['days_overdue']))})" for p in plants)
+    text = f"Hey! Ein paar aus der Familie sind ein bisschen durstig:\n{lines}\n\n{base_url}"
     return subject, html, text
 
 

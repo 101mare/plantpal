@@ -13,18 +13,19 @@ def test_build_magic_link():
 
 def test_build_invite():
     subject, html, text = es.build_invite("http://x/register?token=abc")
-    assert "eingeladen" in subject.lower()
+    assert "plantpal" in subject.lower()
     assert "register?token=abc" in html
+    assert "Familie" in html  # speaks in PlantPal's voice
 
 
 def test_build_digest_pluralization():
     s1, _, _ = es.build_digest("http://x", [{"name": "Aloe", "days_overdue": 2}])
-    assert "1 Pflanze " in s1 and "hat Durst" in s1
+    assert "Eine von uns" in s1 and "hätte" in s1  # singular, PlantPal's voice
     s2, html2, text2 = es.build_digest(
         "http://x",
         [{"name": "Aloe", "days_overdue": 2}, {"name": "Fern", "days_overdue": 0}],
     )
-    assert "2 Pflanzen" in s2 and "haben Durst" in s2
+    assert "2 von uns" in s2 and "hätten" in s2  # plural
     assert "Aloe" in html2 and "Fern" in text2
 
 
