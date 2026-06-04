@@ -135,24 +135,24 @@ async def test_mutation_without_csrf_is_403(client, db, settings):
 
 def test_origin_allowed_dev_tolerates_localhost():
     from plantpal.config import Settings
-    from plantpal.main import _origin_allowed
+    from plantpal.deps import origin_allowed
 
     dev = Settings(APP_ENV="development", BASE_URL="http://localhost:8000")
-    assert _origin_allowed("http://localhost:8000", dev) is True
-    assert _origin_allowed("http://localhost:5173", dev) is True  # Vite dev server
-    assert _origin_allowed("http://127.0.0.1:5173", dev) is True
-    assert _origin_allowed(None, dev) is True  # falls back to token check
-    assert _origin_allowed("http://evil.example", dev) is False
+    assert origin_allowed("http://localhost:8000", dev) is True
+    assert origin_allowed("http://localhost:5173", dev) is True  # Vite dev server
+    assert origin_allowed("http://127.0.0.1:5173", dev) is True
+    assert origin_allowed(None, dev) is True  # falls back to token check
+    assert origin_allowed("http://evil.example", dev) is False
 
 
 def test_origin_allowed_prod_is_strict():
     from plantpal.config import Settings
-    from plantpal.main import _origin_allowed
+    from plantpal.deps import origin_allowed
 
     prod = Settings(APP_ENV="production", BASE_URL="https://plantpal.example.com")
-    assert _origin_allowed("https://plantpal.example.com", prod) is True
-    assert _origin_allowed("http://localhost:5173", prod) is False
-    assert _origin_allowed("https://evil.example", prod) is False
+    assert origin_allowed("https://plantpal.example.com", prod) is True
+    assert origin_allowed("http://localhost:5173", prod) is False
+    assert origin_allowed("https://evil.example", prod) is False
 
 
 # --- AK-15 isolation ---
