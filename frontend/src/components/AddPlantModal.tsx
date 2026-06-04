@@ -218,7 +218,7 @@ export function Backdrop({
     >
       <div
         ref={dialogRef}
-        className="pp-frame max-h-[90vh] w-full max-w-md overflow-y-auto p-6"
+        className="pp-frame max-h-[90dvh] w-full max-w-md overflow-y-auto p-6"
         role="dialog"
         aria-modal="true"
         aria-label={label}

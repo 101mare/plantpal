@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "PlantPal",
   "short_name": "PlantPal",
   "description": "Pokédex-style plant watering tracker — self-hosted, invite-only.",

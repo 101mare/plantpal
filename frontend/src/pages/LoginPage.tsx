@@ -29,7 +29,7 @@ export function LoginPage() {
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <h1 className="mb-6 text-center">
+        <h1 className="mb-6 text-center" tabIndex={-1}>
           <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-14 w-auto" />
         </h1>
         {sent ? (
@@ -57,6 +57,9 @@ export function LoginPage() {
               <input
                 type="email"
                 required
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="pp-input mt-2"

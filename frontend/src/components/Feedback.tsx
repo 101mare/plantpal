@@ -40,7 +40,7 @@ export function Banner({
   return (
     <div
       role={tone === "danger" ? "alert" : "status"}
-      aria-live="polite"
+      aria-live={tone === "danger" ? "assertive" : "polite"}
       className={`flex items-center justify-center gap-3 px-4 py-1.5 text-center text-[11px] font-bold text-white ${
         tone === "danger" ? "bg-pp-danger" : "bg-pp-border"
       }`}
@@ -48,12 +48,21 @@ export function Banner({
     >
       <span>{message}</span>
       {action && (
-        <button type="button" onClick={action.onClick} className="underline underline-offset-2">
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="px-3 py-2 underline underline-offset-2"
+        >
           {action.label}
         </button>
       )}
       {onDismiss && (
-        <button type="button" onClick={onDismiss} aria-label={t("error.dismiss")} className="px-1">
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={t("error.dismiss")}
+          className="px-3 py-2"
+        >
           ✕
         </button>
       )}

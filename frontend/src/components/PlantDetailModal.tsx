@@ -78,7 +78,7 @@ export function PlantDetailModal({
         />
         <button
           type="button"
-          className="py-2 text-xs underline disabled:opacity-50"
+          className="min-h-[44px] px-3 py-2 text-xs underline disabled:opacity-50"
           disabled={uploadImg.isPending}
           onClick={() => fileRef.current?.click()}
         >
@@ -122,7 +122,7 @@ export function PlantDetailModal({
         {/* Destructive action separated from the primary buttons to prevent mis-taps (UX-08) */}
         <button
           type="button"
-          className="mt-1 py-2 text-xs text-pp-danger underline"
+          className="mt-1 min-h-[44px] px-3 py-2 text-xs text-pp-danger underline"
           onClick={() => {
             onDelete(plant);
             onClose();

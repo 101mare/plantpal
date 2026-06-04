@@ -205,7 +205,8 @@ img[alt="PlantPal"] {
   border-radius: 8px;
   padding: 0.55rem 0.7rem;
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: 1rem; /* >=16px stops iOS Safari from auto-zooming on field focus */
+  min-height: 44px; /* WCAG 2.5.5 / Apple HIG touch target */
   width: 100%;
 }
 

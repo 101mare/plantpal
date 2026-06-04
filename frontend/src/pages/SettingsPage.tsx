@@ -125,11 +125,11 @@ export function SettingsPage() {
           </Section>
 
           <Section title={t("settings.emailReminders")}>
-            <label className="flex items-center justify-between gap-3">
+            <label className="flex min-h-[44px] items-center justify-between gap-3">
               {t("settings.emailReminders")}
               <input
                 type="checkbox"
-                className="h-6 w-6"
+                className="h-7 w-7"
                 checked={s?.email_reminders_enabled ?? false}
                 onChange={(e) => patch.mutate({ email_reminders_enabled: e.target.checked })}
               />
@@ -231,16 +231,16 @@ export function SettingsPage() {
                 </button>
               </div>
             )}
-            <ul className="mt-3 flex flex-col gap-1">
+            <ul className="mt-3 flex flex-col gap-2">
               {(invites ?? []).map((inv) => (
                 <li key={inv.id} className="flex items-center justify-between gap-2 text-[10px]">
-                  <span>
+                  <span className="min-w-0 break-words">
                     {inv.used_count}/{inv.max_uses} {t("settings.inviteUses")} · {inv.status}
                   </span>
                   {inv.status === "active" && (
                     <button
                       type="button"
-                      className="underline"
+                      className="shrink-0 px-3 py-2 underline"
                       onClick={() => revoke.mutate(inv.id)}
                     >
                       {t("settings.revoke")}

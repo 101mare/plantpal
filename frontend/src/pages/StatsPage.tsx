@@ -57,7 +57,7 @@ export function StatsPage() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="pp-frame flex flex-col items-center gap-2 p-6 text-center">
-      <span className="text-2xl font-bold text-pp-gold">{value}</span>
+      <span className="break-words text-2xl font-bold text-pp-gold">{value}</span>
       <span className="text-[10px] uppercase opacity-80">{label}</span>
     </div>
   );

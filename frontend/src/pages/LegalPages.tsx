@@ -5,8 +5,10 @@ function LegalShell({ title, children }: { title: string; children: ReactNode })
   return (
     <div className="mx-auto max-w-2xl p-4">
       <header className="mb-6 flex items-center justify-between">
-        <h1 className="pp-heading text-lg">{title}</h1>
-        <Link to="/" className="pp-btn">
+        <h1 className="pp-heading text-lg" tabIndex={-1}>
+          {title}
+        </h1>
+        <Link to="/" className="pp-btn" aria-label="Zurück">
           ←
         </Link>
       </header>

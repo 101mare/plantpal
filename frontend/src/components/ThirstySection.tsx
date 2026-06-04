@@ -29,8 +29,8 @@ export function ThirstySection({
               alt={p.name}
               className="pixelated h-12 w-12 rounded border border-pp-border object-cover"
             />
-            <div className="flex-1">
-              <div className="text-xs font-bold uppercase">{p.name}</div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-bold uppercase">{p.name}</div>
               <div className="text-[10px] opacity-80">
                 {t("plant.overdue", { n: p.days_overdue })}
               </div>
