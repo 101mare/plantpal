@@ -2,6 +2,9 @@ services:
   plantpal:
     build: .
     restart: unless-stopped
+    # PID 1 init (tini): forwards signals to uvicorn for clean shutdown and reaps any
+    # zombie children (e.g. from to_thread/subprocess work) — N17.
+    init: true
     env_file: .env
     volumes:
       - plantpal-data:/data

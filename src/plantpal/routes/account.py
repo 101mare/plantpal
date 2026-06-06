@@ -89,15 +89,21 @@ async def request_email_change(
     settings=Depends(settings_dep),
 ):
     await check_rate_limit(db, key_user(user.id, "emailchange"), settings.RL_EMAIL_CHANGE_USER)
-    raw, code, _ = await auth_service.create_email_change(db, settings, user.id, body.new_email)
-    confirm_url = f"{settings.BASE_URL}/api/account/email/confirm?token={raw}"
-    old_email = (await auth_service.get_user_by_id(db, user.id))["email"]
-    with contextlib.suppress(email_service.EmailUnavailableError):
-        await email_service.send_email_change_verify(settings, body.new_email, confirm_url, code)
-    with contextlib.suppress(email_service.EmailUnavailableError):
-        await email_service.send_email_change_notice(
-            settings, old_email, auth_service._mask_email(body.new_email)
-        )
+    result = await auth_service.create_email_change(db, settings, user.id, body.new_email)
+    # result is None when the target address is already taken — stay completely silent so the
+    # response is indistinguishable from success and leaks no membership info (N2).
+    if result is not None:
+        raw, code, _ = result
+        confirm_url = f"{settings.BASE_URL}/api/account/email/confirm?token={raw}"
+        old_email = (await auth_service.get_user_by_id(db, user.id))["email"]
+        with contextlib.suppress(email_service.EmailUnavailableError):
+            await email_service.send_email_change_verify(
+                settings, body.new_email, confirm_url, code
+            )
+        with contextlib.suppress(email_service.EmailUnavailableError):
+            await email_service.send_email_change_notice(
+                settings, old_email, auth_service._mask_email(body.new_email)
+            )
     return GenericOk()
 
 
@@ -189,8 +195,12 @@ async def delete_account(
     db=Depends(get_db),
     settings=Depends(settings_dep),
 ):
-    await image_service.delete_user_images(settings, user.id)
+    await check_rate_limit(db, key_user(user.id, "account"), settings.RL_PLANT_MUTATION)  # C7
+    # DB rows first, then images: a crash between steps must not leave an account whose rows
+    # are gone-but-present pointing at already-deleted image files (N6). Images are a
+    # best-effort cleanup; an orphaned file is harmless, an orphaned account row is not.
     await plant_service.delete_account(db, user.id)
+    await image_service.delete_user_images(settings, user.id)
     response = JSONResponse({"ok": True})
     clear_auth_cookies(response, settings)
     return response

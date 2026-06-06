@@ -14,7 +14,7 @@ async def _make_user(db, email, quota=3):
 
 async def _login(client, db, settings, email="admin@b.c"):
     _, raw = await auth_service.bootstrap_admin(db, settings, email)
-    await client.get(f"/auth/verify?token={raw}")
+    await client.post("/auth/verify", data={"token": raw}, headers={"origin": settings.BASE_URL})
     return client.cookies.get(settings.CSRF_COOKIE_NAME)
 
 

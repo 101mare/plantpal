@@ -3,9 +3,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant } from "../types";
-import { Backdrop, Field } from "./AddPlantModal";
+import { Backdrop, Field, IMAGE_ACCEPT, MAX_IMAGE_BYTES, MAX_IMAGE_MB } from "./AddPlantModal";
 import { InlineError, announce } from "./Feedback";
-import { daysSince, plantStatus } from "../status";
+import { daysSince, statusText } from "../status";
 
 export function PlantDetailModal({
   plant,
@@ -20,6 +20,7 @@ export function PlantDetailModal({
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [imgBust, setImgBust] = useState(0);
+  const [sizeErr, setSizeErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const water = useMutation({
@@ -59,11 +60,7 @@ export function PlantDetailModal({
         : since === 1
           ? t("date.yesterday")
           : t("date.daysAgo", { n: since });
-  const level = plantStatus(plant);
-  const statusText =
-    level === "due" || level === "overdue"
-      ? t("plant.overdue", { n: plant.days_overdue })
-      : t(level === "soon" ? "status.soon" : "status.ok");
+  const statusLine = statusText(plant, t);
   const imgSrc = plant.image_url
     ? `${plant.image_url}${imgBust ? `?v=${imgBust}` : ""}`
     : "/placeholder.png";
@@ -74,6 +71,10 @@ export function PlantDetailModal({
         <img
           src={imgSrc}
           alt={plant.name}
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (!img.src.endsWith("/placeholder.png")) img.src = "/placeholder.png";
+          }}
           className="pixelated h-36 w-36 rounded-lg border-2 border-pp-border object-cover"
         />
         <button
@@ -87,11 +88,18 @@ export function PlantDetailModal({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept={IMAGE_ACCEPT}
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) uploadImg.mutate(f);
+            e.target.value = ""; // allow re-picking the same file after an error
+            if (!f) return;
+            if (f.size > MAX_IMAGE_BYTES) {
+              setSizeErr(t("plant.photoTooLarge", { mb: MAX_IMAGE_MB }));
+              return;
+            }
+            setSizeErr(null);
+            uploadImg.mutate(f);
           }}
         />
         <h2 className="pp-heading text-sm">{plant.name}</h2>
@@ -99,12 +107,17 @@ export function PlantDetailModal({
           <Row k={t("plant.interval")} v={t("plant.everyDays", { n: plant.interval_days })} />
           {plant.location_room && <Row k={t("plant.room")} v={plant.location_room} />}
           <Row k={t("plant.lastWatered")} v={lastWatered} />
-          <Row k={t("plant.status")} v={statusText} />
+          <Row k={t("plant.status")} v={statusLine} />
           {plant.water_amount_ml != null && (
             <Row k={t("plant.amount")} v={`${plant.water_amount_ml} ml`} />
           )}
           {plant.notes && <Row k={t("plant.notes")} v={plant.notes} />}
         </dl>
+        {sizeErr && (
+          <p role="alert" className="text-center text-[11px] text-pp-danger">
+            {sizeErr}
+          </p>
+        )}
         <InlineError error={water.error ?? uploadImg.error} className="text-center" />
         <div className="mt-2 flex w-full gap-2">
           <button

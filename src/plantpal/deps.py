@@ -131,4 +131,19 @@ async def require_csrf(request: Request) -> None:
 
 
 def client_ip(request: Request) -> str:
-    return hash_ip(request.client.host if request.client else None)
+    """Hashed client IP for rate-limit keys and request logs.
+
+    Behind the Cloudflare Tunnel ``request.client.host`` is always the cloudflared
+    container — identical for every visitor — so per-IP rate-limits would collapse to a
+    single global bucket and one attacker could lock everyone out (F-DEP-7). When
+    ``TRUST_CF_CONNECTING_IP`` is set we trust ``CF-Connecting-IP`` instead; only the
+    tunnel can reach the origin in that deployment, so the header can't be spoofed from
+    outside. Turn the flag off for any deployment where the origin is directly reachable.
+    """
+    settings = request.app.state.settings
+    ip = request.client.host if request.client else None
+    if settings.TRUST_CF_CONNECTING_IP:
+        forwarded = request.headers.get("cf-connecting-ip")
+        if forwarded:
+            ip = forwarded.strip()
+    return hash_ip(ip)

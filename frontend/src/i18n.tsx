@@ -94,6 +94,13 @@ const resources: Record<Locale, Record<string, string>> = {
     "plant.saved": "Gespeichert",
     "status.ok": "Aktuell",
     "status.soon": "Bald fällig",
+    "status.dueToday": "heute dran",
+    "settings.deleteConfirmWord": "LÖSCHEN",
+    "settings.deleteConfirmPrompt": "Zum Bestätigen {word} eingeben:",
+    "settings.emailChanged": "E-Mail-Adresse geändert.",
+    "plant.photoTooLarge": "Bild zu groß (max. {mb} MB).",
+    "login.resend": "Code erneut senden",
+    "login.resendDone": "Neuer Code gesendet.",
     "date.today": "heute",
     "date.yesterday": "gestern",
     "date.daysAgo": "vor {n} Tagen",
@@ -241,6 +248,13 @@ const resources: Record<Locale, Record<string, string>> = {
     "plant.saved": "Saved",
     "status.ok": "Healthy",
     "status.soon": "Due soon",
+    "status.dueToday": "due today",
+    "settings.deleteConfirmWord": "DELETE",
+    "settings.deleteConfirmPrompt": "Type {word} to confirm:",
+    "settings.emailChanged": "Email address changed.",
+    "plant.photoTooLarge": "Image too large (max {mb} MB).",
+    "login.resend": "Resend code",
+    "login.resendDone": "New code sent.",
     "date.today": "today",
     "date.yesterday": "yesterday",
     "date.daysAgo": "{n} days ago",
@@ -351,4 +365,12 @@ export function errorText(err: unknown, t: TFn): string {
   return t(
     typeof navigator !== "undefined" && !navigator.onLine ? "error.offline" : "error.generic",
   );
+}
+
+/** Map a bare error *code* (e.g. from a `?error=` redirect param) to a localized message,
+ *  falling back to the friendly generic for codes we don't translate (N21). */
+export function codeMessage(code: string, t: TFn): string {
+  const key = `error.code.${code}`;
+  const msg = t(key);
+  return msg === key ? t("error.generic") : msg;
 }

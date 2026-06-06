@@ -1,14 +1,11 @@
 import { useI18n } from "../i18n";
 import type { Plant } from "../types";
-import { plantStatus, STATUS_DOT } from "../status";
+import { plantStatus, statusText, STATUS_DOT } from "../status";
 
 export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => void }) {
   const { t } = useI18n();
   const level = plantStatus(plant);
-  const statusLabel =
-    level === "due" || level === "overdue"
-      ? t("plant.overdue", { n: plant.days_overdue })
-      : t(level === "soon" ? "status.soon" : "status.ok");
+  const statusLabel = statusText(plant, t);
 
   return (
     <button
@@ -21,7 +18,8 @@ export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => voi
         src={plant.image_url ?? "/placeholder.png"}
         alt=""
         onError={(e) => {
-          (e.target as HTMLImageElement).src = "/placeholder.png";
+          const img = e.currentTarget;
+          if (!img.src.endsWith("/placeholder.png")) img.src = "/placeholder.png"; // re-trigger-safe
         }}
         className="pixelated h-14 w-14 flex-shrink-0 rounded border border-pp-border bg-pp-panel-2 object-cover"
       />
@@ -44,7 +42,7 @@ export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => voi
           className={`absolute bottom-1 right-1 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white ${STATUS_DOT[level]}`}
           aria-hidden="true"
         >
-          {(level === "due" || level === "overdue") && <span>{plant.days_overdue}d</span>}
+          {plant.days_overdue >= 1 && <span>{plant.days_overdue}d</span>}
           💧
         </span>
       )}

@@ -41,11 +41,22 @@ async def test_change_via_link(db, settings):
     assert await auth.confirm_email_change_by_token(db, settings, raw) == "new@b.c"
 
 
-async def test_email_taken_on_request(db, settings):
+async def test_email_taken_on_request_is_silent(db, settings):
+    """N2: targeting a taken address is a silent no-op (no membership oracle)."""
     uid = await _user(db, "old@b.c")
     await _user(db, "taken@b.c")
+    assert await auth.create_email_change(db, settings, uid, "taken@b.c") is None
+    async with db.execute(
+        "SELECT COUNT(*) AS n FROM email_change_requests WHERE user_id = ?", (uid,)
+    ) as cur:
+        assert (await cur.fetchone())["n"] == 0  # nothing written
+
+
+async def test_email_change_to_own_address_still_errors(db, settings):
+    """Requesting your *own* current address still errors — reveals nothing new."""
+    uid = await _user(db, "old@b.c")
     with pytest.raises(ConflictError):
-        await auth.create_email_change(db, settings, uid, "taken@b.c")
+        await auth.create_email_change(db, settings, uid, "old@b.c")
 
 
 async def test_email_taken_on_confirm(db, settings):

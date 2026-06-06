@@ -1,15 +1,23 @@
 import type { Plant } from "./types";
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
 export type StatusLevel = "ok" | "soon" | "due" | "overdue";
 
-/** Whole days from the date of `iso` to today — local, day-granular. null if unparseable. */
+/** Today in Berlin as YYYY-MM-DD. The backend stores naive-Berlin wall-clock timestamps,
+ *  so day math must be done in Berlin time, not the viewer's local zone (N37). */
+function berlinToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date());
+}
+
+/** Whole days from the calendar date of `iso` to today, both in Berlin. null if unparseable.
+ *  `iso` is naive-Berlin wall-clock, so its first 10 chars ARE the Berlin date; anchoring both
+ *  ends at UTC midnight makes the count independent of the viewer's timezone (N37). */
 export function daysSince(iso: string): number | null {
-  const then = new Date(iso);
+  const then = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
   if (Number.isNaN(then.getTime())) return null;
-  const a = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
-  const now = new Date();
-  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  return Math.round((b - a) / 86_400_000);
+  const today = new Date(`${berlinToday()}T00:00:00Z`);
+  return Math.round((today.getTime() - then.getTime()) / 86_400_000);
 }
 
 /**
@@ -23,6 +31,15 @@ export function plantStatus(p: Plant): StatusLevel {
   if (p.is_thirsty) return p.days_overdue >= 4 ? "overdue" : "due";
   const since = daysSince(p.last_watered_at) ?? 0;
   return p.interval_days - since <= 1 ? "soon" : "ok";
+}
+
+/** Localized status line. A plant due *today* reads "due today", not "0 days overdue" (N25). */
+export function statusText(p: Plant, t: Translate): string {
+  const level = plantStatus(p);
+  if (level === "due" || level === "overdue") {
+    return p.days_overdue >= 1 ? t("plant.overdue", { n: p.days_overdue }) : t("status.dueToday");
+  }
+  return t(level === "soon" ? "status.soon" : "status.ok");
 }
 
 /** Tailwind background classes per level (semantic green→red, always paired with a text label). */

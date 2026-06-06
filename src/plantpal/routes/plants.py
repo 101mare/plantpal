@@ -49,6 +49,9 @@ async def create_plant(
     settings=Depends(settings_dep),
 ):
     await check_rate_limit(db, key_user(user.id, "plant"), settings.RL_PLANT_MUTATION)
+    # create always processes an image, so it must also honor the (stricter) image-upload
+    # limit — otherwise it's a 30/m bypass of the 5/m CPU-heavy image pipeline (N5).
+    await check_rate_limit(db, key_user(user.id, "image"), settings.RL_IMAGE_UPLOAD)
     data = PlantCreate(
         name=name,
         interval_days=interval_days,
@@ -104,6 +107,7 @@ async def delete_plant(
     await check_rate_limit(db, key_user(user.id, "plant"), settings.RL_PLANT_MUTATION)
     if not await plant_service.soft_delete_plant(db, user.id, plant_id):
         raise NotFoundError("plant_not_found", code="plant_not_found", status_code=404)
+    await image_service.delete_plant_image(settings, user.id, plant_id)  # avoid disk leak (N8)
     return GenericOk()
 
 

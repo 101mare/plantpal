@@ -14,7 +14,7 @@ async def test_stats_endpoint_rich_shape(client, db, settings):
     from plantpal import auth_service
 
     _, raw = await auth_service.bootstrap_admin(db, settings, "a@b.c")
-    await client.get(f"/auth/verify?token={raw}")
+    await client.post("/auth/verify", data={"token": raw}, headers={"origin": settings.BASE_URL})
     body = (await client.get("/api/stats")).json()
     for key in (
         "total_plants",

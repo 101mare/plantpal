@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import { useI18n } from "../i18n";
+import { codeMessage, useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
@@ -13,6 +13,7 @@ export function SettingsPage() {
   const { theme, setTheme, background, setBackground } = useTheme();
   const qc = useQueryClient();
   const nav = useNavigate();
+  const [params, setParams] = useSearchParams();
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
   const s = settingsQuery.data;
   const invitesQuery = useQuery({ queryKey: ["invites"], queryFn: api.listInvites });
@@ -20,7 +21,36 @@ export function SettingsPage() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [delText, setDelText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [emailBanner, setEmailBanner] = useState<{ tone: "danger" | "ok"; text: string } | null>(
+    null,
+  );
+
+  // N21: surface the email-change link result the backend redirects to
+  // (/settings?email_changed=1 or ?email_error=<code>), then strip it from the URL.
+  useEffect(() => {
+    const changed = params.get("email_changed");
+    const errCode = params.get("email_error");
+    if (!changed && !errCode) return;
+    if (changed) setEmailBanner({ tone: "ok", text: t("settings.emailChanged") });
+    else if (errCode) setEmailBanner({ tone: "danger", text: codeMessage(errCode, t) });
+    const next = new URLSearchParams(params);
+    next.delete("email_changed");
+    next.delete("email_error");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // N23: the server is the source of truth for locale/theme (it also drives the reminder mails).
+  // Adopt it once settings load so a device that drifted (or another device's change) reconciles,
+  // instead of the dropdowns showing a stale localStorage value.
+  useEffect(() => {
+    if (!s) return;
+    if (s.locale && s.locale !== locale) setLocale(s.locale);
+    if (s.theme && s.theme !== theme) setTheme(s.theme);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s?.locale, s?.theme]);
   const patch = useMutation({
     mutationFn: api.updateSettings,
     onSuccess: () => {
@@ -90,6 +120,17 @@ export function SettingsPage() {
         </Link>
       </header>
 
+      {emailBanner && (
+        <div
+          role={emailBanner.tone === "danger" ? "alert" : "status"}
+          className={`pp-frame mb-4 p-3 text-center text-[11px] ${
+            emailBanner.tone === "danger" ? "text-pp-danger" : "text-pp-gold"
+          }`}
+        >
+          {emailBanner.text}
+        </div>
+      )}
+
       {settingsQuery.isError ? (
         <ErrorState error={settingsQuery.error} onRetry={() => settingsQuery.refetch()} />
       ) : (
@@ -104,7 +145,11 @@ export function SettingsPage() {
                   className="pp-input"
                   placeholder={t("settings.newEmail")}
                   value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
+                  onChange={(e) => {
+                    setNewEmail(e.target.value);
+                    // N36: drop the sticky "sent ✓" so it doesn't linger / re-show on re-open.
+                    if (changeEmail.isSuccess || changeEmail.isError) changeEmail.reset();
+                  }}
                 />
                 <button
                   type="button"
@@ -145,7 +190,13 @@ export function SettingsPage() {
                 key={s?.reminder_hour ?? 8}
                 defaultValue={s?.reminder_hour ?? 8}
                 onBlur={(e) => {
-                  const h = Number(e.target.value);
+                  const raw = e.target.value.trim();
+                  if (raw === "") {
+                    // N33: empty field = no change, NOT midnight (Number("") === 0 slips the guard).
+                    e.target.value = String(s?.reminder_hour ?? 8);
+                    return;
+                  }
+                  const h = Number(raw);
                   if (Number.isInteger(h) && h >= 0 && h <= 23) patch.mutate({ reminder_hour: h });
                   else e.target.value = String(s?.reminder_hour ?? 8); // reject NaN/out-of-range
                 }}
@@ -272,21 +323,45 @@ export function SettingsPage() {
               type="button"
               className="pp-btn"
               style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
-              onClick={() => setConfirmDel(true)}
+              onClick={() => {
+                setDelText("");
+                setConfirmDel(true);
+              }}
             >
               {t("settings.deleteAccount")}
             </button>
           </div>
 
           {confirmDel && (
-            <Backdrop onClose={() => setConfirmDel(false)}>
-              <p className="mb-4 text-center text-sm">{t("settings.deleteConfirm")}</p>
+            <Backdrop
+              onClose={() => {
+                setConfirmDel(false);
+                setDelText("");
+              }}
+            >
+              <p className="mb-3 text-center text-sm">{t("settings.deleteConfirm")}</p>
+              {/* N29: require typing LÖSCHEN/DELETE so one mis-tap can't wipe the account. */}
+              <label className="mb-1 block text-center text-[11px] opacity-80">
+                {t("settings.deleteConfirmPrompt", { word: t("settings.deleteConfirmWord") })}
+              </label>
+              <input
+                className="pp-input mb-4 text-center"
+                value={delText}
+                onChange={(e) => setDelText(e.target.value)}
+                aria-label={t("settings.deleteConfirmWord")}
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+              />
               <div className="flex gap-2">
                 <button
                   type="button"
-                  className="pp-btn flex-1"
+                  className="pp-btn flex-1 disabled:opacity-40"
                   style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
-                  disabled={removeAccount.isPending}
+                  disabled={
+                    removeAccount.isPending ||
+                    delText.trim().toUpperCase() !== t("settings.deleteConfirmWord")
+                  }
                   onClick={() => removeAccount.mutate()}
                 >
                   {t("settings.deleteAccount")}
@@ -294,7 +369,10 @@ export function SettingsPage() {
                 <button
                   type="button"
                   className="pp-btn flex-1"
-                  onClick={() => setConfirmDel(false)}
+                  onClick={() => {
+                    setConfirmDel(false);
+                    setDelText("");
+                  }}
                 >
                   {t("plant.cancel")}
                 </button>

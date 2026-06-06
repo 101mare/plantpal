@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { errorText, useI18n } from "../i18n";
 
 /**
@@ -86,23 +86,40 @@ export function announce(message: string) {
   }
 }
 
-/** Single visually-hidden polite live region. Mount once at the app root. */
+/** Single visually-hidden polite live region with a small FIFO queue. Several quick
+ *  announcements (e.g. watering two plants in a row) used to clobber each other through one
+ *  shared 50ms timer — now each is given its own airtime so none is lost (N38). Mount once. */
 export function LiveRegion() {
   const [message, setMessage] = useState("");
+  const queue = useRef<string[]>([]);
+  const draining = useRef(false);
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const onAnnounce = (e: Event) => {
-      const next = (e as CustomEvent<string>).detail;
-      // Clear first, then set on the next tick, so re-announcing the same text (e.g. watering a
-      // second plant) is still spoken — assistive tech ignores an unchanged live-region value.
+    let clearTimer: ReturnType<typeof setTimeout>;
+    let nextTimer: ReturnType<typeof setTimeout>;
+    const drain = () => {
+      const next = queue.current.shift();
+      if (next === undefined) {
+        draining.current = false;
+        return;
+      }
+      draining.current = true;
+      // Clear first, then set on the next tick, so identical consecutive text is still spoken
+      // (assistive tech ignores an unchanged live-region value).
       setMessage("");
-      clearTimeout(timer);
-      timer = setTimeout(() => setMessage(next), 50);
+      clearTimer = setTimeout(() => {
+        setMessage(next);
+        nextTimer = setTimeout(drain, 1100); // each message gets ~1.1s before the next one
+      }, 60);
+    };
+    const onAnnounce = (e: Event) => {
+      queue.current.push((e as CustomEvent<string>).detail);
+      if (!draining.current) drain();
     };
     window.addEventListener(ANNOUNCE_EVENT, onAnnounce);
     return () => {
       window.removeEventListener(ANNOUNCE_EVENT, onAnnounce);
-      clearTimeout(timer);
+      clearTimeout(clearTimer);
+      clearTimeout(nextTimer);
     };
   }, []);
   return (

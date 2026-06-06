@@ -5,6 +5,7 @@ from PIL import Image
 
 from plantpal.errors import PayloadTooLargeError, UnsupportedMediaError
 from plantpal.image_service import (
+    delete_plant_image,
     delete_user_images,
     image_file_path,
     process_upload,
@@ -79,10 +80,22 @@ async def test_upload_rejects_oversized_pixel_count(settings):
         await process_upload(small_pixels, 1, 1, raw)
 
 
-async def test_upload_rejects_declared_mime_mismatch(settings):
-    raw = _img_bytes("PNG", 50, 50)  # real PNG
-    with pytest.raises(UnsupportedMediaError, match="match"):
-        await process_upload(settings, 1, 1, raw, declared_mime="image/jpeg")
+async def test_upload_ignores_mismatched_declared_mime(settings):
+    # N39: the magic-byte sniff is authoritative; a real image declared with the "wrong" or a
+    # generic content type (image/jpg, application/octet-stream) is still accepted.
+    await process_upload(settings, 1, 1, _img_bytes("PNG", 50, 50), declared_mime="image/jpeg")
+    assert image_file_path(settings, 1, 1) is not None
+    await process_upload(settings, 1, 2, _img_bytes("JPEG"), declared_mime="application/octet-stream")
+    assert image_file_path(settings, 1, 2) is not None
+
+
+async def test_delete_plant_image_removes_file(settings):
+    # N8: soft-delete cleans up the on-disk thumbnail so deleted plants don't leak disk.
+    await process_upload(settings, 4, 9, _img_bytes())
+    assert image_file_path(settings, 4, 9) is not None
+    await delete_plant_image(settings, 4, 9)
+    assert image_file_path(settings, 4, 9) is None
+    await delete_plant_image(settings, 4, 9)  # idempotent / best-effort, never raises
 
 
 async def test_output_png_has_no_icc_profile(settings):

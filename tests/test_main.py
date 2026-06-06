@@ -1,5 +1,6 @@
 import io
 from datetime import timedelta
+from pathlib import Path
 
 from PIL import Image
 
@@ -23,14 +24,16 @@ async def _make_user(db, email):
 
 
 async def _login(client, db, settings, email="admin@b.c", admin=True):
-    """Log a user in through /auth/verify; return the CSRF token from the cookie."""
+    """Log a user in via the N1 confirm POST; return the CSRF token from the cookie."""
     if admin:
         _, raw = await auth_service.bootstrap_admin(db, settings, email)
     else:
         await _make_user(db, email)
         raw, _ = await auth_service.request_login_link(db, settings, email)
-    resp = await client.get(f"/auth/verify?token={raw}")
-    assert resp.status_code == 303  # redirect into the SPA; cookies set on the 303
+    resp = await client.post(
+        "/auth/verify", data={"token": raw}, headers={"origin": settings.BASE_URL}
+    )
+    assert resp.status_code == 303  # cookies set on the confirm redirect
     return client.cookies.get(settings.CSRF_COOKIE_NAME)
 
 
@@ -121,6 +124,47 @@ async def test_create_plant_rolls_back_on_bad_image(client, db, settings):
     assert r.status_code == 415
     # the failed upload must not leave an orphan imageless plant
     assert (await client.get("/api/plants")).json()["items"] == []
+
+
+async def test_create_plant_honors_image_rate_limit(client, db, settings):
+    # N5: create always processes an image, so it must also obey the 5/m image limit.
+    csrf = await _login(client, db, settings)
+    for i in range(5):  # RL_IMAGE_UPLOAD default = 5/m
+        r = await client.post(
+            "/api/plants",
+            data={"name": f"P{i}", "interval_days": "7"},
+            files={"image": ("p.png", _png(), "image/png")},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert r.status_code == 201, f"create #{i} should pass"
+    r = await client.post(
+        "/api/plants",
+        data={"name": "P6", "interval_days": "7"},
+        files={"image": ("p.png", _png(), "image/png")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 429  # 6th create trips the image-upload limit
+
+
+async def test_account_delete_removes_db_rows_and_images(client, db, settings):
+    # C7 (rate-limited delete) happy path + N6 (DB rows first, then best-effort images).
+    csrf = await _login(client, db, settings, "del@b.c")
+    r = await client.post(
+        "/api/plants",
+        data={"name": "Cactus", "interval_days": "9"},
+        files={"image": ("p.png", _png(), "image/png")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 201
+    me = await auth_service.get_user_by_email(db, "del@b.c")
+    img_dir = Path(settings.IMAGE_DIR) / str(me["id"])
+    assert img_dir.exists()
+
+    r = await client.delete("/api/account", headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 200
+    assert await auth_service.get_user_by_email(db, "del@b.c") is None  # row gone (cascade)
+    assert not img_dir.exists()  # images cleaned up
+    assert (await client.get("/api/me")).status_code == 401
 
 
 # --- AK-21 CSRF ---

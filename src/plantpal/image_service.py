@@ -7,6 +7,7 @@ traversal-proof storage, CPU work off the event loop via ``asyncio.to_thread``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import os
 import shutil
@@ -95,14 +96,13 @@ async def process_upload(
     if len(raw) > max_bytes:
         raise PayloadTooLargeError(f"Image exceeds {settings.IMG_MAX_UPLOAD_MB} MB.")
 
-    if declared_mime and declared_mime not in _ALLOWED_MIME:
-        raise UnsupportedMediaError("Only JPEG, PNG or WebP images are accepted.")
-
+    # Trust the magic-byte sniff, not the client-declared content type. Clients legitimately
+    # send image/jpg or application/octet-stream for perfectly valid files, so a strict
+    # declared==sniffed check rejected good uploads (N39). declared_mime stays informational;
+    # everything is re-encoded to PNG below regardless.
     kind = filetype.guess(raw[:262])
     if kind is None or kind.mime not in _ALLOWED_MIME:
         raise UnsupportedMediaError("Only JPEG, PNG or WebP images are accepted.")
-    if declared_mime and declared_mime != kind.mime:
-        raise UnsupportedMediaError("Declared content type does not match the file.")
 
     png_bytes = await asyncio.to_thread(
         _process_sync, raw, settings.IMG_SIZE_PX, settings.IMG_MAX_PIXELS
@@ -127,6 +127,18 @@ def image_file_path(settings: Settings, user_id: int, plant_id: int) -> Path | N
     """Resolve the on-disk PNG for serving; None if absent."""
     path = _storage_path(settings, user_id, plant_id)
     return path if path.exists() else None
+
+
+async def delete_plant_image(settings: Settings, user_id: int, plant_id: int) -> None:
+    """Best-effort removal of one plant's stored image.
+
+    Called on soft-delete so deleted plants don't leak their thumbnail on disk (N8). The
+    real DELETE only fires after the client-side 5 s undo window, so there is no
+    server-side restore to break. Errors are swallowed — a leftover file is harmless.
+    """
+    path = _storage_path(settings, user_id, plant_id)
+    with contextlib.suppress(OSError):
+        await asyncio.to_thread(path.unlink, missing_ok=True)
 
 
 async def delete_user_images(settings: Settings, user_id: int) -> None:

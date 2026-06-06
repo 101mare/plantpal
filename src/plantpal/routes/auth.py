@@ -4,26 +4,89 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import html
 import time
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import auth_service, email_service
+from ..config import Settings
 from ..deps import (
     clear_auth_cookies,
     client_ip,
     current_user,
     get_db,
+    origin_allowed,
     require_csrf,
     set_auth_cookies,
     settings_dep,
 )
-from ..errors import AppError
+from ..errors import AppError, CsrfError
 from ..models import GenericOk, LoginRequest, RegisterRequest, VerifyCodeRequest
 from ..rate_limit import check_rate_limit, key_email, key_ip
 
 router = APIRouter()
+
+
+def _interstitial_html(masked_email: str, raw_token: str) -> str:
+    """Server-rendered confirmation page for the magic link (N1).
+
+    No inline scripts (CSP-safe); the only action is a same-origin POST that the
+    SecurityHeaders/origin check then validates before any cookie is set.
+    """
+    masked = html.escape(masked_email)
+    token = html.escape(raw_token)
+    return f"""<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Anmeldung bestätigen · PlantPal</title>
+<style>
+  :root {{ color-scheme: dark; }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0d2018; color: #e8efe9;
+  }}
+  .card {{
+    width: 100%; max-width: 380px; background: #142a20; border: 1px solid #21402f;
+    border-radius: 18px; padding: 32px 28px; text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  }}
+  .logo {{ font-size: 1.1rem; font-weight: 700; letter-spacing: .02em; margin-bottom: 18px; }}
+  h1 {{ font-size: 1.25rem; margin: 0 0 6px; }}
+  p {{ margin: 6px 0 0; color: #b8c8bd; }}
+  .email {{
+    display: block; margin: 14px 0 22px; font-size: 1.05rem;
+    font-weight: 600; color: #f3d9a6; word-break: break-all;
+  }}
+  button {{
+    width: 100%; padding: 14px 18px; border: 0; border-radius: 12px; cursor: pointer;
+    font-size: 1rem; font-weight: 600; color: #1a130a; background: #e3b878;
+    min-height: 48px;
+  }}
+  button:hover {{ background: #edc587; }}
+  .hint {{ margin-top: 18px; font-size: .85rem; color: #8aa092; }}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo">🌱 PlantPal</div>
+    <h1>Anmeldung bestätigen</h1>
+    <p>Du meldest dich an als</p>
+    <span class="email">{masked}</span>
+    <form method="post" action="/auth/verify">
+      <input type="hidden" name="token" value="{token}">
+      <button type="submit">Jetzt anmelden</button>
+    </form>
+    <p class="hint">Gehört diese Adresse nicht dir? Schließe diese Seite einfach.</p>
+  </main>
+</body>
+</html>"""
 
 
 @router.post("/auth/request-login")
@@ -56,10 +119,42 @@ async def request_login(
 
 
 @router.get("/auth/verify")
-async def verify(request: Request, token: str, db=Depends(get_db), settings=Depends(settings_dep)):
+async def verify_interstitial(
+    request: Request, token: str, db=Depends(get_db), settings=Depends(settings_dep)
+):
+    """Show a confirmation page for the magic link — DOES NOT set a cookie (N1).
+
+    Setting the session on this top-level GET enables login-CSRF / session-fixation:
+    SameSite=Lax still allows a cross-site navigation to land here, so an attacker could
+    silently sign a victim into the attacker's account. We instead require a deliberate
+    same-origin POST below before any cookie is set.
+    """
     await check_rate_limit(db, key_ip(client_ip(request), "verify"), settings.RL_LOGIN_VERIFY_IP)
-    # Browser flow: the user clicked an emailed link, so redirect into the SPA
-    # instead of returning raw JSON. Failures land on /login with an error code.
+    try:
+        masked = await auth_service.peek_login_token(db, settings, token)
+    except AppError as exc:
+        return RedirectResponse(f"/login?error={exc.code}", status_code=303)
+    return HTMLResponse(_interstitial_html(masked, token))
+
+
+@router.post("/auth/verify")
+async def verify_confirm(
+    request: Request,
+    token: str = Form(...),
+    db=Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+):
+    """Consume the magic link and open the session — the cookie-setting step (N1).
+
+    Guarded by a strict same-origin Origin check: a cross-site form auto-submit carries a
+    foreign Origin and is rejected, so an attacker cannot complete the login in the
+    victim's browser. (There is no session yet, hence no double-submit token to fall back
+    on — we require the Origin to be present and to match.)
+    """
+    await check_rate_limit(db, key_ip(client_ip(request), "verify"), settings.RL_LOGIN_VERIFY_IP)
+    origin = request.headers.get("origin")
+    if not origin or not origin_allowed(origin, settings):
+        raise CsrfError("Bad origin.")
     try:
         session_token, _user = await auth_service.verify_login(db, settings, token)
     except AppError as exc:

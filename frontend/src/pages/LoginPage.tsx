@@ -1,21 +1,35 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { useI18n } from "../i18n";
+import { codeMessage, useI18n } from "../i18n";
 import { LangThemeBar } from "../components/LangThemeBar";
 import { InlineError } from "../components/Feedback";
 
 export function LoginPage() {
   const { t } = useI18n();
+  const [params, setParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
+  // Surface a backend redirect like /login?error=token_expired (e.g. from a dead magic link),
+  // then strip the param so a refresh doesn't keep re-showing it (N21).
+  const [linkErrorCode, setLinkErrorCode] = useState<string | null>(null);
+  useEffect(() => {
+    const code = params.get("error");
+    if (!code) return;
+    setLinkErrorCode(code);
+    const next = new URLSearchParams(params);
+    next.delete("error");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
+    setLinkErrorCode(null);
     try {
       await api.requestLogin(email);
       setSent(true);
@@ -32,6 +46,11 @@ export function LoginPage() {
         <h1 className="mb-6 text-center" tabIndex={-1}>
           <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-14 w-auto" />
         </h1>
+        {linkErrorCode && (
+          <div role="alert" className="pp-frame mb-4 p-3 text-center text-[11px] text-pp-danger">
+            {codeMessage(linkErrorCode, t)}
+          </div>
+        )}
         {sent ? (
           <div className="pp-frame p-8 text-center text-sm leading-relaxed">
             <p className="mb-4">{t("login.checkInbox")}</p>

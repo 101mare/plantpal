@@ -26,6 +26,16 @@ ENV APP_ENV=production \
     STATIC_DIR=/app/static \
     PYTHONUNBUFFERED=1
 
+# Drop root (N14): bake /data's ownership into the image layer BEFORE the VOLUME line. The
+# legacy (non-BuildKit) builder — still the default for docker-compose v1 on the documented
+# Pi/NAS deploy — discards changes made to a volume path *after* its VOLUME declaration, so a
+# chown placed after VOLUME would be silently dropped and the non-root container could not write
+# the DB. A fresh named volume inherits this baked-in ownership on first mount.
+RUN useradd --system --uid 10001 --create-home app \
+    && mkdir -p /data \
+    && chown -R app:app /data
+USER app
+
 VOLUME ["/data"]
 EXPOSE 8000
 

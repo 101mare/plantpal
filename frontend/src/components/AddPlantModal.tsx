@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import { InlineError, announce } from "./Feedback";
+
+// Accept only what the server accepts (N27): the picker shouldn't offer HEIC/GIF/SVG that the
+// backend then rejects with a 415 after a full upload. MAX_IMAGE_MB mirrors IMG_MAX_UPLOAD_MB.
+export const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
+export const MAX_IMAGE_MB = 10;
+export const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024;
 
 export function AddPlantModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -14,7 +21,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
   const [room, setRoom] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [photoError, setPhotoError] = useState(false);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -38,8 +45,19 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
 
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
+    if (f && f.size > MAX_IMAGE_BYTES) {
+      // Reject oversized files client-side, before a doomed upload (N27).
+      setPhotoErr(t("plant.photoTooLarge", { mb: MAX_IMAGE_MB }));
+      e.target.value = "";
+      setFile(null);
+      setPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
     setFile(f);
-    if (f) setPhotoError(false);
+    if (f) setPhotoErr(null);
     setPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return f ? URL.createObjectURL(f) : null;
@@ -55,7 +73,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) {
-      setPhotoError(true); // inline field error instead of a one-word toast (UX-04)
+      setPhotoErr(t("plant.photoRequired")); // inline field error instead of a one-word toast (UX-04)
       return;
     }
     mutation.mutate();
@@ -77,7 +95,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
             ) : (
               <div
                 className={`flex h-24 w-24 items-center justify-center rounded border-2 border-dashed text-2xl ${
-                  photoError ? "border-pp-danger" : "border-pp-border"
+                  photoErr ? "border-pp-danger" : "border-pp-border"
                 }`}
               >
                 📷
@@ -85,16 +103,14 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
             )}
             <input
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT}
               onChange={pick}
               className="text-[10px]"
               aria-label={t("plant.photo")}
-              aria-invalid={photoError}
+              aria-invalid={!!photoErr}
             />
           </label>
-          {photoError && (
-            <span className="text-[10px] text-pp-danger">{t("plant.photoRequired")}</span>
-          )}
+          {photoErr && <span className="text-[10px] text-pp-danger">{photoErr}</span>}
         </div>
         <Field label={`${t("plant.name")} *`}>
           <input
@@ -166,6 +182,18 @@ function useFocusTrap(ref: React.RefObject<HTMLElement | null>) {
     const node = ref.current;
     if (!node) return;
     const prevActive = document.activeElement as HTMLElement | null;
+    // N30: while the modal is open, lock background scroll (no touch scroll-bleed) and mark the
+    // rest of the app inert so the screen-reader cursor and Tab can't wander into the background.
+    // The dialog is portaled to <body> (outside #main), so it stays interactive.
+    const { body } = document;
+    const prevOverflow = body.style.overflow;
+    const prevOverscroll = body.style.overscrollBehavior;
+    body.style.overflow = "hidden";
+    body.style.overscrollBehavior = "contain";
+    const main = document.getElementById("main");
+    main?.setAttribute("inert", "");
+    main?.setAttribute("aria-hidden", "true");
+
     const sel =
       'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
     const items = () => Array.from(node.querySelectorAll<HTMLElement>(sel));
@@ -187,6 +215,12 @@ function useFocusTrap(ref: React.RefObject<HTMLElement | null>) {
     node.addEventListener("keydown", onKey);
     return () => {
       node.removeEventListener("keydown", onKey);
+      // Order matters: drop inert BEFORE restoring focus, or the trigger (inside #main) can't
+      // receive focus (an inert element isn't focusable).
+      main?.removeAttribute("inert");
+      main?.removeAttribute("aria-hidden");
+      body.style.overflow = prevOverflow;
+      body.style.overscrollBehavior = prevOverscroll;
       prevActive?.focus?.(); // return focus to the trigger on close (A11Y-03)
     };
   }, [ref]);
@@ -210,7 +244,8 @@ export function Backdrop({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   useFocusTrap(dialogRef);
-  return (
+  // Portal to <body> so the dialog lives outside #main (which we mark inert above).
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
@@ -227,6 +262,7 @@ export function Backdrop({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

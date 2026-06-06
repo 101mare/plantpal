@@ -146,6 +146,30 @@ async def verify_login(
     )
 
 
+async def peek_login_token(db: aiosqlite.Connection, settings: Settings, raw_token: str) -> str:
+    """Validate a login token WITHOUT consuming it; return the target email, masked.
+
+    Backs the N1 interstitial: the magic-link GET must show "sign in as a***@x" and set
+    no cookie, so the cookie-setting step can be a deliberate same-origin POST. Raises the
+    same errors as ``verify_login`` for invalid/expired/used links / disabled users.
+    """
+    token_hash = hash_token(raw_token, settings)
+    async with db.execute("SELECT * FROM login_tokens WHERE token_hash = ?", (token_hash,)) as cur:
+        tok = await cur.fetchone()
+    if tok is None:
+        raise TokenInvalidError("Invalid sign-in link.")
+    if tok["used_at"] is not None:
+        raise TokenUsedError("This sign-in link has already been used.")
+    if from_iso(tok["expires_at"]) <= now_berlin():
+        raise TokenExpiredError("This sign-in link has expired.")
+    user = await get_user_by_id(db, tok["user_id"])
+    if user is None:
+        raise TokenInvalidError("user_not_found", code="user_not_found", status_code=404)
+    if user["status"] != "active":
+        raise ForbiddenError("This account is disabled.", code="user_disabled")
+    return _mask_email(user["email"])
+
+
 # --- Registration with invite ---
 
 
@@ -396,12 +420,10 @@ async def verify_login_code(
     if tok is None:
         raise TokenInvalidError("Invalid code.", code="invalid_code")
     if tok["attempt_count"] >= settings.LOGIN_CODE_MAX_ATTEMPTS:
-        # lockout reached: burn the token (link included) and refuse further tries (F-AUTH-23)
-        await db.execute(
-            "UPDATE login_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL",
-            (to_iso(now), tok["id"]),
-        )
-        await db.commit()
+        # Code path is locked, but do NOT burn the row: it also carries the magic-link hash,
+        # so burning it would let anyone who knows the email DoS the victim's pending login by
+        # spamming wrong codes (N3). The 256-bit link isn't guessable, so it stays valid; only
+        # the 6-digit code is refused. A fresh login request supersedes this row anyway.
         raise AppError(
             "Too many attempts. Request a new code.", code="code_locked", status_code=423
         )
@@ -409,21 +431,14 @@ async def verify_login_code(
         raise TokenExpiredError("This code has expired.", code="code_expired")
     if not constant_time_equal(hash_token(code, settings), tok["code_hash"]):
         new_count = tok["attempt_count"] + 1
-        if new_count >= settings.LOGIN_CODE_MAX_ATTEMPTS:
-            # final wrong attempt: burn the token (magic link included) + lock out now (F-AUTH-23),
-            # rather than leaving the link usable until a 6th try arrives.
-            await db.execute(
-                "UPDATE login_tokens SET attempt_count = ?, used_at = ? WHERE id = ?",
-                (new_count, to_iso(now), tok["id"]),
-            )
-            await db.commit()
-            raise AppError(
-                "Too many attempts. Request a new code.", code="code_locked", status_code=423
-            )
         await db.execute(
             "UPDATE login_tokens SET attempt_count = ? WHERE id = ?", (new_count, tok["id"])
         )
         await db.commit()
+        if new_count >= settings.LOGIN_CODE_MAX_ATTEMPTS:
+            raise AppError(
+                "Too many attempts. Request a new code.", code="code_locked", status_code=423
+            )
         raise TokenInvalidError("Invalid code.", code="invalid_code")
 
     user = await get_user_by_id(db, tok["user_id"])
@@ -571,8 +586,14 @@ def _mask_email(email: str) -> str:
 
 async def create_email_change(
     db: aiosqlite.Connection, settings: Settings, user_id: int, new_email: str
-) -> tuple[str, str, str]:
-    """Start an email change. Returns (raw_token, code, masked_old_email)."""
+) -> tuple[str, str, str] | None:
+    """Start an email change. Returns (raw_token, code, masked_old_email), or None.
+
+    None means the target address already belongs to someone else: the caller must then
+    behave exactly as on success (no error, no mail) so the endpoint can't be used as a
+    membership oracle for this invite-only app (N2). Requesting your *own* current address
+    still errors — that reveals nothing the caller doesn't already know.
+    """
     new_email = normalize_email(new_email)
     user = await get_user_by_id(db, user_id)
     if user is None:
@@ -580,7 +601,7 @@ async def create_email_change(
     if normalize_email(user["email"]) == new_email:
         raise ConflictError("That is already your email.", code="email_taken")
     if await get_user_by_email(db, new_email) is not None:
-        raise ConflictError("This email is taken.", code="email_taken")
+        return None  # taken by another account → silent no-op, identical response (N2)
     now = now_berlin()
     await db.execute(  # invalidate the user's prior open requests
         "UPDATE email_change_requests SET used_at = ? WHERE user_id = ? AND used_at IS NULL",

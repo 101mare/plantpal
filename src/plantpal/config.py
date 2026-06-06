@@ -87,6 +87,17 @@ class Settings(BaseSettings):
     LOG_JSON: bool | None = None  # None -> JSON in prod, console otherwise
     APP_VERSION: str = "3.0.0"
 
+    # --- Ingress: real client IP behind the Cloudflare Tunnel (F-DEP-7) ---
+    # Behind the tunnel request.client.host is the cloudflared container, identical for every
+    # visitor, so IP rate-limits would collapse to one global bucket. Read CF-Connecting-IP first.
+    # Only the tunnel can reach the origin, so the header is trustworthy in that deploy.
+    TRUST_CF_CONNECTING_IP: bool = True
+
+    # --- DoS guard: cap request body size (single-worker OOM protection) ---
+    # Rejected with 413 before the body is buffered. Must stay above IMG_MAX_UPLOAD_MB so legit
+    # multipart image uploads (image + form fields + boundaries) are not blocked.
+    MAX_REQUEST_BODY_MB: int = 12
+
     @property
     def is_production(self) -> bool:
         return self.APP_ENV.lower() == "production"
@@ -123,6 +134,25 @@ class Settings(BaseSettings):
                     raise ValueError(f"{name} must be a non-default value of >= 32 chars in prod")
             if not self.RESEND_API_KEY:
                 raise ValueError("RESEND_API_KEY required in production")
+            # A localhost/placeholder/sandbox FROM address makes every auth mail bounce — or,
+            # with Resend's resend.dev sandbox, only deliver to the account owner — which
+            # silently locks out all non-admins (admins still have CLI tokens) — N19.
+            from_email = self.RESEND_FROM_EMAIL.lower()
+            placeholder_from = (
+                "localhost",
+                "resend.dev",
+                "example.com",
+                "example.org",
+                "example.net",
+            )
+            if "@" not in from_email or any(bad in from_email for bad in placeholder_from):
+                raise ValueError(
+                    "RESEND_FROM_EMAIL must be a real deliverable address on your verified "
+                    "domain in production (not localhost / resend.dev sandbox / example.*)"
+                )
+            # Litestream without a replica target backs up to nowhere — a false sense of safety.
+            if self.LITESTREAM_ENABLED and not self.LITESTREAM_REPLICA_URL:
+                raise ValueError("LITESTREAM_REPLICA_URL required when LITESTREAM_ENABLED")
 
 
 @lru_cache
