@@ -1,9 +1,14 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { useI18n } from "./i18n";
 import { Banner, ErrorBoundary } from "./components/Feedback";
+import { TabBar } from "./components/TabBar";
+import { AddPlantModal } from "./components/AddPlantModal";
+import { AppShellContext, type SprossMirror } from "./appShell";
+import { loadSprossStore } from "./sprossState";
+import type { Stage } from "./status";
 import { LoginPage } from "./pages/LoginPage";
 import { LoginCodePage } from "./pages/LoginCodePage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -22,11 +27,46 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const { data, isLoading, isError } = useMe();
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center pp-heading">{t("app.loading")}</div>
+      <div className="flex min-h-[100dvh] items-center justify-center pp-heading">
+        {t("app.loading")}
+      </div>
     );
   }
   if (isError || !data) return <Navigate to="/login" replace />;
   return <>{children}</>;
+}
+
+/** Persistent layout for the four app routes: holds the AppShell context (live Spross mirror +
+ *  openAdd), renders the page via <Outlet/> with bottom padding for the bar, the persistent TabBar,
+ *  and the lifted Add-Plant sheet. A single Layout-Route (not a per-route wrapper) keeps the bar,
+ *  context, hop-timer and an open Add-sheet MOUNTED across tab switches (no re-mount flicker). */
+function AppShell() {
+  const [adding, setAdding] = useState(false);
+  // Seed the mirror from the persisted store so the central medallion is never empty on a cold
+  // start that lands on /stats or /settings (mood stays the calm 'wohl' default until PlantdexPage
+  // mounts and pushes the live collective mood).
+  const [spross, setSpross] = useState<SprossMirror>(() => {
+    const s = loadSprossStore();
+    return {
+      mood: "wohl",
+      stage: (s?.stageMax ?? 2) as Stage,
+      skin: s?.activeSkin ?? null,
+      vacation: s?.vacation.on ?? false,
+      reactNonce: 0,
+      riseNonce: 0,
+      bloomNonce: 0,
+    };
+  });
+  const value = useMemo(() => ({ spross, setSpross, openAdd: () => setAdding(true) }), [spross]);
+  return (
+    <AppShellContext.Provider value={value}>
+      <div className="pb-tab-safe">
+        <Outlet />
+      </div>
+      <TabBar />
+      {adding && <AddPlantModal onClose={() => setAdding(false)} />}
+    </AppShellContext.Provider>
+  );
 }
 
 /** On every client-side route change reset scroll and move focus to the page heading,
@@ -97,38 +137,20 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/code" element={<LoginCodePage />} />
             <Route path="/register" element={<RegisterPage />} />
+            {/* One persistent Layout-Route gates auth once, then keeps the TabBar + AppShell context
+                + hop-timer + open Add-sheet mounted across the four app tabs (no per-tab re-mount). */}
             <Route
-              path="/"
               element={
                 <RequireAuth>
-                  <PlantdexPage />
+                  <AppShell />
                 </RequireAuth>
               }
-            />
-            <Route
-              path="/settings"
-              element={
-                <RequireAuth>
-                  <SettingsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/stats"
-              element={
-                <RequireAuth>
-                  <StatsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/spross"
-              element={
-                <RequireAuth>
-                  <SprossPage />
-                </RequireAuth>
-              }
-            />
+            >
+              <Route path="/" element={<PlantdexPage />} />
+              <Route path="/stats" element={<StatsPage />} />
+              <Route path="/spross" element={<SprossPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
             <Route path="/impressum" element={<ImpressumPage />} />
             <Route path="/datenschutz" element={<DatenschutzPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

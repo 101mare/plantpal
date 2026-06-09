@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { codeMessage, useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
+import { useAppShell } from "../appShell";
 import type { Background, Locale, Theme } from "../types";
 import { loadSprossStore, saveSprossStore, defaultSprossStore } from "../sprossState";
 import { berlinToday } from "../status";
@@ -13,6 +14,7 @@ import { berlinToday } from "../status";
 export function SettingsPage() {
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme, background, setBackground } = useTheme();
+  const { setSpross } = useAppShell();
   const qc = useQueryClient();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -115,13 +117,11 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-md p-4">
-      <header className="mb-6 flex items-center justify-between">
+      {/* No back button — the persistent TabBar is the sole primary navigation (Instagram-style). */}
+      <header className="mb-6">
         <h1 className="pp-heading text-lg" tabIndex={-1}>
           {t("settings.title")}
         </h1>
-        <Link to="/" className="pp-btn">
-          {t("nav.back")}
-        </Link>
       </header>
 
       {emailBanner && (
@@ -226,6 +226,9 @@ export function SettingsPage() {
                     vacation: { on, since: on ? berlinToday() : store.vacation.since },
                   });
                   setVacationOn(on);
+                  // Mirror vacation into the central TabBar sprite immediately, so the rest/dormant
+                  // look shows even though PlantdexPage (which otherwise pushes vacation) isn't mounted.
+                  setSpross((p) => ({ ...p, vacation: on }));
                 }}
               />
             </label>

@@ -11,6 +11,11 @@ import "./index.css";
 
 // Apply persisted theme + language before first paint (no flash).
 document.documentElement.setAttribute("data-theme", detectTheme());
+// Pre-paint the iOS/Android status-bar colour from the persisted theme too, so a light-mode user
+// no longer gets a dark-statusbar flash on cold start (theme.tsx keeps it in sync on later toggles).
+document
+  .querySelector('meta[name="theme-color"]')
+  ?.setAttribute("content", detectTheme() === "light" ? "#f3efe2" : "#0d2018");
 document.documentElement.setAttribute("data-bg", detectBackground());
 document.documentElement.lang = detectLocale();
 

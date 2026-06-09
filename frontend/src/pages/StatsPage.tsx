@@ -11,13 +11,11 @@ export function StatsPage() {
 
   return (
     <div className="mx-auto max-w-md p-4">
-      <header className="mb-6 flex items-center justify-between">
+      {/* No back button — the persistent TabBar is the sole primary navigation (Instagram-style). */}
+      <header className="mb-6">
         <h1 className="pp-heading text-lg" tabIndex={-1}>
           {t("nav.stats")}
         </h1>
-        <Link to="/" className="pp-btn">
-          {t("nav.back")}
-        </Link>
       </header>
       {isLoading ? (
         <p className="pp-heading text-center text-sm">{t("app.loading")}</p>

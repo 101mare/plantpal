@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { useI18n } from "../i18n";
+import { useAppShell } from "../appShell";
+import { Spross } from "./Spross";
+
+const HOP_MIN_MS = 8000;
+const HOP_RANGE_MS = 17000;
+
+/**
+ * Persistent bottom tab-bar — the app's sole primary navigation (Instagram-style: no back buttons,
+ * sections switch only via the tabs; detail views stay backdrop sheets). A <nav> landmark with
+ * Links + aria-current="page" — NOT role=tablist/tab (that ARIA pattern is for in-page tabpanels,
+ * expects aria-controls + arrow-key roving, and would announce "tab" without a panel).
+ *
+ * The central tab renders the REAL Spross sprite (mood-mirrored, larger + raised on a pedestal) and
+ * hops at random 8–25s intervals. The hop is reduced-motion-safe twice over: the keyframe rests at
+ * translateY(0) (so index.css's reduced-motion block freezes it), and the JS timer re-checks
+ * matchMedia on every tick. The ➕ tab opens the persistent Add-Plant sheet via the AppShell context
+ * (NOT a window-event — the old PlantdexPage listener is unmounted on /stats|/spross|/settings).
+ */
+export function TabBar() {
+  const { t } = useI18n();
+  const { pathname } = useLocation();
+  const { spross, openAdd } = useAppShell();
+  const [hop, setHop] = useState(false);
+  const [kbd, setKbd] = useState(false);
+
+  // Occasional self-hop. Re-checks prefers-reduced-motion AND document visibility on EVERY tick (a
+  // mid-session reduced-motion toggle is honoured without a listener; a backgrounded tab spares the
+  // battery) — the hop is then skipped but always re-scheduled.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(
+        () => {
+          if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.hidden) {
+            schedule();
+            return;
+          }
+          setHop(true);
+          schedule();
+        },
+        HOP_MIN_MS + Math.random() * HOP_RANGE_MS,
+      );
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Hide the bar while the on-screen keyboard is open (Plantdex search / Settings fields) so it
+  // doesn't float mid-screen above the keyboard. Feature-detected — a no-op without visualViewport.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => setKbd(window.innerHeight - vv.height > 120);
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
+  return (
+    <nav className={`pp-tabbar ${kbd ? "pp-tabbar--kbd" : ""}`} aria-label={t("nav.primary")}>
+      <Link
+        to="/"
+        aria-label={t("nav.plantdex")}
+        title={t("nav.plantdex")}
+        aria-current={pathname === "/" ? "page" : undefined}
+        className={`pp-tab ${pathname === "/" ? "pp-tab-active" : ""}`}
+      >
+        <span aria-hidden="true" className="pp-tab-ico">
+          🪴
+        </span>
+      </Link>
+      <Link
+        to="/stats"
+        aria-label={t("nav.stats")}
+        title={t("nav.stats")}
+        aria-current={pathname === "/stats" ? "page" : undefined}
+        className={`pp-tab ${pathname === "/stats" ? "pp-tab-active" : ""}`}
+      >
+        <span aria-hidden="true" className="pp-tab-ico">
+          📊
+        </span>
+      </Link>
+      {/* Central, raised tab: the real mood-mirrored Spross sprite (identity), not a flat icon. */}
+      <Link
+        to="/spross"
+        aria-label={t("nav.spross")}
+        title={t("nav.spross")}
+        aria-current={pathname === "/spross" ? "page" : undefined}
+        className={`pp-tab-center ${pathname === "/spross" ? "pp-tab-center-active" : ""}`}
+      >
+        <span
+          className={`pp-tab-pedestal ${hop ? "spross-tab-hop" : ""}`}
+          // animationend bubbles up from the inner sprite's wiggle/rise/bloom; clear strictly by
+          // name so a reaction animation can't cross-clear a running hop (cf. Spross.tsx).
+          onAnimationEnd={(e) => {
+            if (e.animationName === "spross-tab-hop") setHop(false);
+          }}
+        >
+          <Spross
+            mood={spross.mood}
+            stage={spross.stage}
+            skin={spross.vacation ? undefined : spross.skin}
+            rest={spross.vacation}
+            reactNonce={spross.reactNonce}
+            riseNonce={spross.riseNonce}
+            bloomNonce={spross.bloomNonce}
+            className="h-10 w-10"
+          />
+        </span>
+      </Link>
+      <Link
+        to="/settings"
+        aria-label={t("nav.settings")}
+        title={t("nav.settings")}
+        aria-current={pathname === "/settings" ? "page" : undefined}
+        className={`pp-tab ${pathname === "/settings" ? "pp-tab-active" : ""}`}
+      >
+        <span aria-hidden="true" className="pp-tab-ico">
+          ⚙️
+        </span>
+      </Link>
+      <button
+        type="button"
+        className="pp-tab pp-tab-add"
+        aria-label={t("nav.add")}
+        title={t("nav.add")}
+        onClick={openAdd}
+      >
+        <span aria-hidden="true" className="pp-tab-add-glyph">
+          +
+        </span>
+      </button>
+    </nav>
+  );
+}

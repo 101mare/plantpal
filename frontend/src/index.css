@@ -50,16 +50,20 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
 }
 
-/* Honour device safe areas (notch / home indicator) in installed PWA mode (A11Y-06) */
+/* Honour device safe areas (notch) in installed PWA mode (A11Y-06). The BOTTOM inset is owned by
+   the fixed TabBar now (it pads itself above the home indicator), so #root no longer adds it — else
+   the inset would be counted twice and leave a gap. min-height:100dvh (fallback 100vh) anchors the
+   layout against the iOS URL-bar height jump and is the floor the auth spinner's min-h-[100dvh]
+   resolves against. */
 #root {
   box-sizing: border-box;
+  min-height: 100vh;
+  min-height: 100dvh;
   padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
@@ -81,6 +85,9 @@ body::before {
 
 body {
   margin: 0;
+  /* Kill the iOS/Android WebView pull-to-refresh + vertical rubber-band (body is the scroll root),
+     so an overscroll gesture can't trigger a refresh or fight the fixed TabBar. */
+  overscroll-behavior-y: none;
   background-color: var(--color-pp-bg);
   /* Ranken render as a seamless, repeating tile (a fixed-size wallpaper) rather than one
      cover-cropped image — even density on every screen, and the tile is downscaled (never
@@ -261,8 +268,12 @@ img[alt="PlantPal"] {
   touch-action: manipulation; /* no 300ms double-tap delay (A11Y) */
   transition: transform 0.05s ease;
 }
-.pp-btn:hover {
-  filter: brightness(1.1);
+/* Hover glow only on real pointer (mouse) devices — stops iOS "sticky hover" from leaving the glow
+   stuck on a button after a tap (a foreign artefact in the pixel look); :active gives touch feedback. */
+@media (hover: hover) and (pointer: fine) {
+  .pp-btn:hover {
+    filter: brightness(1.1);
+  }
 }
 .pp-btn:active {
   transform: translateY(2px);
@@ -373,4 +384,155 @@ select,
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============================================================================
+   Bottom Tab-Bar (iOS-style persistent primary navigation). Warm-gold pixel
+   chrome — NO glass/backdrop-blur. The bar pads itself over the home indicator
+   (safe-area-inset-bottom); each app page reserves room via .pb-tab-safe.
+   ============================================================================ */
+:root {
+  --pp-tabbar-h: 64px;
+}
+/* Bottom padding every app page adds so its last content clears the fixed bar + home indicator. */
+.pb-tab-safe {
+  padding-bottom: calc(var(--pp-tabbar-h) + env(safe-area-inset-bottom));
+}
+.pp-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  height: calc(var(--pp-tabbar-h) + env(safe-area-inset-bottom));
+  /* The inset padding pushes the icon row ABOVE the home indicator. */
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  background: var(--color-pp-panel);
+  border-top: 3px solid var(--color-pp-border);
+  box-shadow:
+    0 -2px 0 rgba(0, 0, 0, 0.35),
+    inset 0 2px 0 rgba(0, 0, 0, 0.25);
+  overflow: visible; /* the raised central medallion ragt heraus */
+  transition: transform 0.15s ease;
+}
+/* Slide the whole bar away while the on-screen keyboard is open. */
+.pp-tabbar--kbd {
+  transform: translateY(120%);
+}
+.pp-tab {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-tab-ico {
+  font-size: 1.5rem;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.1s ease;
+}
+.pp-tab-active .pp-tab-ico {
+  opacity: 1;
+}
+.pp-tab:active .pp-tab-ico {
+  transform: translateY(1px);
+}
+/* Active marker = a colour-independent gold bar above the icon (reads over any emoji). */
+.pp-tab-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-pp-gold);
+}
+.pp-tab-center {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Raised 56px medallion holding the live Spross sprite. Raised via margin (NOT transform — the hop
+   keyframe owns transform), transform-origin bottom so the hop scales from the pedestal base. */
+.pp-tab-pedestal {
+  margin-top: -22px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-pp-panel-2);
+  border: 3px solid var(--color-pp-gold);
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.25);
+  transform-origin: bottom center;
+}
+/* Active (/spross): a STATIC gold halo (no animation — reduced-motion-safe by construction). */
+.pp-tab-center-active .pp-tab-pedestal {
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.25),
+    0 0 0 4px rgba(224, 181, 61, 0.45),
+    0 0 0 9px rgba(224, 181, 61, 0.18);
+}
+/* Occasional self-hop. Rests at translateY(0) at 0%/100%, so the reduced-motion block above freezes
+   it automatically (second guard beside the JS matchMedia check), like spross-bloom/rise/wiggle. */
+@keyframes spross-tab-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  20% {
+    transform: translateY(-22%);
+  }
+  40% {
+    transform: translateY(0);
+  }
+  55% {
+    transform: translateY(-10%);
+  }
+  70% {
+    transform: translateY(0);
+  }
+}
+.spross-tab-hop {
+  animation: spross-tab-hop 0.7s ease-in-out 1;
+}
+/* The ➕ tab: a solid gold disc (FILL) — the one action; the medallion is a gold RING (identity), so
+   the two gold accents don't compete (outline vs fill + size + elevation). */
+.pp-tab-add-glyph {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-pp-gold);
+  color: var(--color-pp-card-ink);
+  font-family: var(--font-pixel);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+:root[data-theme="light"] .pp-tab-add-glyph {
+  color: #fff;
+}
+.pp-tab-add:active .pp-tab-add-glyph {
+  transform: translateY(1px);
 }

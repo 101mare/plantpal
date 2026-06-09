@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
@@ -75,13 +74,11 @@ export function SprossPage() {
 
   return (
     <div className="mx-auto max-w-md p-4">
-      <header className="mb-6 flex items-center justify-between">
+      {/* No back button — the persistent TabBar is the sole primary navigation (Instagram-style). */}
+      <header className="mb-6">
         <h1 className="pp-heading text-lg" tabIndex={-1}>
           {t("spross.title")}
         </h1>
-        <Link to="/" className="pp-btn">
-          {t("nav.back")}
-        </Link>
       </header>
 
       {isLoading ? (

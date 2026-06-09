@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant, Stats } from "../types";
 import { PlantCard } from "../components/PlantCard";
 import { ThirstySection } from "../components/ThirstySection";
-import { AddPlantModal } from "../components/AddPlantModal";
 import { PlantDetailModal } from "../components/PlantDetailModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
 import { Spross } from "../components/Spross";
+import { useAppShell } from "../appShell";
 import {
   sprossMood,
   berlinToday,
@@ -37,7 +36,10 @@ export function PlantdexPage() {
   // Shares the ['stats'] cache with StatsPage; already invalidated on water/delete, so it stays
   // fresh. Only watering_consistency_pct is read (for the "blühend" upgrade); undefined until loaded.
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: api.getStats });
-  const [adding, setAdding] = useState(false);
+  // The Add-Plant sheet + the central Spross tab live in the persistent AppShell now; this page
+  // opens the sheet via openAdd() and pushes its live mood/stage/skin/vacation + reaction nonces
+  // into the shared mirror so the tab sprite reflects the collection from anywhere in the app.
+  const { openAdd, setSpross } = useAppShell();
   const [selected, setSelected] = useState<Plant | null>(null);
   const [wateringId, setWateringId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
@@ -247,6 +249,23 @@ export function PlantdexPage() {
     else if (now < prev) setWaterNonce((n) => n + 1);
   }, [thirsty.length, vacation]);
 
+  // Push the live mood-mirror into the AppShell so the central Spross TAB reflects the collection
+  // (and replays the same water/rise/bloom reactions the old band did). MUST be its own effect: the
+  // render-derived `mood` (above) and the nonces are NOT in the ratchet effect's deps, so folding
+  // this in would push a stale mood. Functional setSpross keeps the setter stable out of the deps.
+  useEffect(() => {
+    setSpross((p) => ({
+      ...p,
+      mood,
+      stage: sprossStage,
+      skin: sprossSkin,
+      vacation,
+      reactNonce: waterNonce,
+      riseNonce,
+      bloomNonce,
+    }));
+  }, [mood, sprossStage, sprossSkin, vacation, waterNonce, riseNonce, bloomNonce, setSpross]);
+
   // The render list keeps plants that are pending deletion, so each shows in place as an undo
   // card at its original spot. They bypass search/filter so the 5s undo window stays reachable.
   const visible = useMemo(() => {
@@ -280,33 +299,12 @@ export function PlantdexPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-4">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      {/* Header is now just the wordmark — the old icon-nav (Statistik/Einstellungen/Pflanze +) and
+          the Spross mood-band moved into the persistent bottom TabBar (Instagram-style navigation). */}
+      <header className="mb-4">
         <h1 tabIndex={-1}>
           <img src="/wordmark.png" alt="PlantPal" width={735} height={160} className="h-9 w-auto" />
         </h1>
-        {/* Hierarchy: ONE gold primary action ("Pflanze +"); Statistik/Einstellungen step back as
-            titled icon targets (aria-label + title → no mystery-meat). The dedicated "Spross" button
-            was removed earlier — the mood band below already links to /spross. */}
-        <nav className="flex items-center justify-end gap-2">
-          <Link to="/stats" className="pp-btn" aria-label={t("nav.stats")} title={t("nav.stats")}>
-            <span aria-hidden="true" className="text-base leading-none">
-              📊
-            </span>
-          </Link>
-          <Link
-            to="/settings"
-            className="pp-btn"
-            aria-label={t("nav.settings")}
-            title={t("nav.settings")}
-          >
-            <span aria-hidden="true" className="text-base leading-none">
-              ⚙️
-            </span>
-          </Link>
-          <button type="button" className="pp-btn pp-btn-primary" onClick={() => setAdding(true)}>
-            {t("nav.add")}
-          </button>
-        </nav>
       </header>
 
       {isLoading ? (
@@ -318,7 +316,7 @@ export function PlantdexPage() {
           <Spross mood="neugierig" stage={sprossStage} size={96} className="mb-4" />
           <p className="pp-heading mb-2 text-sm">{t("empty.title")}</p>
           <p className="mb-4 opacity-70">{t("empty.hint")}</p>
-          <button type="button" className="pp-btn" onClick={() => setAdding(true)}>
+          <button type="button" className="pp-btn" onClick={openAdd}>
             {t("empty.cta")}
           </button>
         </div>
@@ -326,39 +324,9 @@ export function PlantdexPage() {
         <>
           <InlineError error={actionError} className="mb-3 text-center pp-halo" />
 
-          {/* Spross mood band: the daily-ritual focal point. Sits directly above the thirsty list so
-              cause (thirsty plants) and effect (Spross's posture) read as a calm MIRROR, not a nag.
-              Decorative (aria-hidden) — the thirsty count/labels below already carry the state for SR. */}
-          <Link
-            to="/spross"
-            aria-label={t("nav.spross")}
-            className="pp-frame mb-4 flex items-center gap-3 p-3 no-underline"
-          >
-            <Spross
-              mood={mood}
-              stage={sprossStage}
-              skin={vacation ? undefined : sprossSkin}
-              rest={vacation}
-              reactNonce={waterNonce}
-              riseNonce={riseNonce}
-              bloomNonce={bloomNonce}
-              className="h-16 w-16 sm:h-24 sm:w-24"
-            />
-            {/* A stable accessible name lives on the Link (aria-label="Spross"); the visible word now
-                carries only IDENTITY, not a rank — Mirror, not judge. The sprite mirrors the mood, the
-                chevron is the nav affordance. Stage 1 shows the mascot name "Spross" (not "Keimling",
-                which reads as a deficit); stages 2-6 show the earned stage name. */}
-            <span className="pp-heading min-w-0 flex-1 truncate text-xs">
-              {greeting
-                ? t("spross.greeting")
-                : sprossStage === 1
-                  ? t("spross.title")
-                  : t(`spross.stage.${sprossStage}`)}
-            </span>
-            <span aria-hidden="true" className="text-pp-gold opacity-70">
-              ›
-            </span>
-          </Link>
+          {/* The Spross mood-band moved into the persistent TabBar's central tab (the live mirror is
+              pushed from the sync effect above). The thirsty count/labels below still carry the state
+              for screen readers, so nothing is lost from the accessibility tree. */}
           {/* Thirsty plants appear ONCE here (with a Water button). While searching, the grid below
               carries every match instead, so this status section steps aside. */}
           {!searching && (
@@ -426,7 +394,6 @@ export function PlantdexPage() {
         </>
       )}
 
-      {adding && <AddPlantModal onClose={() => setAdding(false)} />}
       {selected && (
         <PlantDetailModal
           plant={selected}
