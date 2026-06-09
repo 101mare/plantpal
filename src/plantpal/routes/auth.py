@@ -17,12 +17,12 @@ from ..deps import (
     client_ip,
     current_user,
     get_db,
-    origin_allowed,
     require_csrf,
+    require_same_origin_submit,
     set_auth_cookies,
     settings_dep,
 )
-from ..errors import AppError, CsrfError
+from ..errors import AppError
 from ..models import GenericOk, LoginRequest, RegisterRequest, VerifyCodeRequest
 from ..rate_limit import check_rate_limit, key_email, key_ip
 
@@ -149,12 +149,10 @@ async def verify_confirm(
     Guarded by a strict same-origin Origin check: a cross-site form auto-submit carries a
     foreign Origin and is rejected, so an attacker cannot complete the login in the
     victim's browser. (There is no session yet, hence no double-submit token to fall back
-    on — we require the Origin to be present and to match.)
+    on — we require Origin *or* Referer to be present and to match.)
     """
     await check_rate_limit(db, key_ip(client_ip(request), "verify"), settings.RL_LOGIN_VERIFY_IP)
-    origin = request.headers.get("origin")
-    if not origin or not origin_allowed(origin, settings):
-        raise CsrfError("Bad origin.")
+    require_same_origin_submit(request, settings)
     try:
         session_token, _user = await auth_service.verify_login(db, settings, token)
     except AppError as exc:
@@ -176,6 +174,9 @@ async def verify_code(
         key_email(body.email.lower(), "codeverify", settings),
         settings.RL_LOGIN_CODE_VERIFY_EMAIL,
     )
+    # This endpoint mints a browser session cookie. Treat it like the magic-link confirm POST:
+    # a cross-site page must not be able to log a victim into an attacker-controlled account.
+    require_same_origin_submit(request, settings)
     session_token, _user = await auth_service.verify_login_code(db, settings, body.email, body.code)
     response = JSONResponse({"ok": True})
     set_auth_cookies(response, settings, session_token)

@@ -84,6 +84,12 @@ export const api = {
   getSettings: () => request<UserSettings>("GET", "/api/settings"),
   updateSettings: (patch: SettingsPatch) => request("PATCH", "/api/settings", patch),
   getStats: () => request<Stats>("GET", "/api/stats"),
+  // v2 Spross: raise the durable server high-water-mark (server applies max(), so it only climbs).
+  updateSprossProgress: (stageMax: number, peakVitality: number) =>
+    request<{ vitality_stage_max: number; peak_vitality: number }>("POST", "/api/spross/progress", {
+      stage_max: stageMax,
+      peak_vitality: peakVitality,
+    }),
   deleteAccount: () => request("DELETE", "/api/account"),
   exportUrl: () => "/api/account/export",
 

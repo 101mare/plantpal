@@ -133,6 +133,94 @@ img[alt="PlantPal"] {
   image-rendering: pixelated;
 }
 
+/* Spross mascot. Mood = an instant background-position swap (handled inline, NO transition — a
+   transition would slide through adjacent half-frames). The joy-wiggle below is the only motion,
+   and the prefers-reduced-motion block further down zeroes its animation-duration automatically. */
+.spross {
+  display: inline-block;
+  flex: none;
+}
+@keyframes spross-wiggle {
+  0%,
+  100% {
+    transform: rotate(0) translateY(0);
+  }
+  25% {
+    transform: rotate(6deg) translateY(-3px);
+  }
+  50% {
+    transform: rotate(0) scaleX(1.05) scaleY(0.94);
+  }
+  75% {
+    transform: rotate(-6deg) translateY(-3px);
+  }
+}
+.spross-react {
+  transform-origin: bottom center;
+  animation: spross-wiggle 0.55s ease-in-out 1;
+}
+
+/* v2 level-up "bloom": one-shot gold halo + micro-scale on the WRAPPER (so it never collides with
+   the sprite's wiggle animation, and a future skin filter on the sprite can't tint this glow). The
+   box-shadow uses spread with NO blur radius -> crisp pixel-friendly rings. Authored to rest at
+   identity (no shadow, scale 1) at BOTH 0% and 100%, so the reduced-motion block below — which only
+   zeroes duration/iteration — freezes it to a normal, un-glowing sprite. */
+.spross-wrap {
+  display: inline-block;
+}
+@keyframes spross-bloom {
+  0% {
+    box-shadow: 0 0 0 0 rgba(224, 181, 61, 0);
+    transform: scale(1);
+  }
+  35% {
+    box-shadow:
+      0 0 0 5px rgba(224, 181, 61, 0.55),
+      0 0 0 11px rgba(224, 181, 61, 0.22);
+    transform: scale(1.06);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 181, 61, 0);
+    transform: scale(1);
+  }
+}
+.spross-bloom {
+  border-radius: 14px;
+  transform-origin: center;
+  animation: spross-bloom 1.6s ease-in-out 1;
+}
+
+/* v2 recovery "aufrichten": one-shot straighten-up on the inner sprite when the last thirsty plant
+   is watered. Mutually exclusive with the joy-wiggle per water-event, so the two never collide on
+   `transform`. Rests at identity at 0% and 100% -> reduced-motion freezes to a normal sprite. */
+@keyframes spross-rise {
+  0% {
+    transform: translateY(0) scaleY(1);
+  }
+  30% {
+    transform: translateY(3px) scaleY(0.96);
+  }
+  70% {
+    transform: translateY(-2px) scaleY(1.03);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+.spross-rise {
+  transform-origin: bottom center;
+  animation: spross-rise 0.6s ease-out 1;
+}
+
+/* v2 skins are PRE-BAKED recoloured sheets (spross-stage{N}-{id}.png) swapped by URL in Spross.tsx
+   — only the character + leaves are hue-shifted; the terracotta pot/cheeks/eyes/gold stay constant.
+   No CSS filter here (a global hue-rotate would also tint the pot), so there is nothing to declare. */
+/* Vacation "dormant" look — a static desaturate (no animation). The component shows the BASE
+   (un-recoloured) sheet while resting, so a skin never bleeds through this dormant look. */
+.spross-rest {
+  filter: saturate(0.45) brightness(0.92) !important;
+}
+
 /* Chunky retro borders */
 .pp-frame {
   border: 3px solid var(--color-pp-border);

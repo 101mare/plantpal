@@ -408,57 +408,82 @@ async def bootstrap_admin(
 async def verify_login_code(
     db: aiosqlite.Connection, settings: Settings, email: str, code: str
 ) -> tuple[str, SessionUser]:
-    """Verify a 6-digit code and open a session. Generic failures (no enumeration)."""
+    """Verify a 6-digit code and open a session. Generic failures (no enumeration).
+
+    The read/attempt-count/consume sequence is serialized with ``BEGIN IMMEDIATE``.
+    Without that write lock, parallel wrong-code requests can all read the same
+    ``attempt_count`` and then write the same incremented value, undercounting guesses.
+    """
     email = normalize_email(email)
     now = now_berlin()
-    async with db.execute(
-        "SELECT * FROM login_tokens WHERE email = ? AND used_at IS NULL AND code_hash IS NOT NULL "
-        "ORDER BY created_at DESC LIMIT 1",
-        (email,),
-    ) as cur:
-        tok = await cur.fetchone()
-    if tok is None:
-        raise TokenInvalidError("Invalid code.", code="invalid_code")
-    if tok["attempt_count"] >= settings.LOGIN_CODE_MAX_ATTEMPTS:
-        # Code path is locked, but do NOT burn the row: it also carries the magic-link hash,
-        # so burning it would let anyone who knows the email DoS the victim's pending login by
-        # spamming wrong codes (N3). The 256-bit link isn't guessable, so it stays valid; only
-        # the 6-digit code is refused. A fresh login request supersedes this row anyway.
-        raise AppError(
-            "Too many attempts. Request a new code.", code="code_locked", status_code=423
-        )
-    if from_iso(tok["created_at"]) + timedelta(minutes=settings.LOGIN_CODE_TTL_MIN) <= now:
-        raise TokenExpiredError("This code has expired.", code="code_expired")
-    if not constant_time_equal(hash_token(code, settings), tok["code_hash"]):
-        new_count = tok["attempt_count"] + 1
-        await db.execute(
-            "UPDATE login_tokens SET attempt_count = ? WHERE id = ?", (new_count, tok["id"])
-        )
-        await db.commit()
-        if new_count >= settings.LOGIN_CODE_MAX_ATTEMPTS:
+    code_hash = hash_token(code, settings)
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        async with db.execute(
+            "SELECT * FROM login_tokens "
+            "WHERE email = ? AND used_at IS NULL AND code_hash IS NOT NULL "
+            "ORDER BY created_at DESC LIMIT 1",
+            (email,),
+        ) as cur:
+            tok = await cur.fetchone()
+        if tok is None:
+            raise TokenInvalidError("Invalid code.", code="invalid_code")
+        if tok["attempt_count"] >= settings.LOGIN_CODE_MAX_ATTEMPTS:
+            # Code path is locked, but do NOT burn the row: it also carries the magic-link hash,
+            # so burning it would let anyone who knows the email DoS the victim's pending login by
+            # spamming wrong codes (N3). The 256-bit link isn't guessable, so it stays valid; only
+            # the 6-digit code is refused. A fresh login request supersedes this row anyway.
             raise AppError(
                 "Too many attempts. Request a new code.", code="code_locked", status_code=423
             )
-        raise TokenInvalidError("Invalid code.", code="invalid_code")
+        if from_iso(tok["created_at"]) + timedelta(minutes=settings.LOGIN_CODE_TTL_MIN) <= now:
+            raise TokenExpiredError("This code has expired.", code="code_expired")
+        if not constant_time_equal(code_hash, tok["code_hash"]):
+            new_count = tok["attempt_count"] + 1
+            bumped = await db.execute(
+                "UPDATE login_tokens SET attempt_count = attempt_count + 1 "
+                "WHERE id = ? AND used_at IS NULL AND attempt_count < ?",
+                (tok["id"], settings.LOGIN_CODE_MAX_ATTEMPTS),
+            )
+            if bumped.rowcount != 1:
+                raise AppError(
+                    "Too many attempts. Request a new code.",
+                    code="code_locked",
+                    status_code=423,
+                )
+            await db.execute("COMMIT")
+            if new_count >= settings.LOGIN_CODE_MAX_ATTEMPTS:
+                raise AppError(
+                    "Too many attempts. Request a new code.",
+                    code="code_locked",
+                    status_code=423,
+                )
+            raise TokenInvalidError("Invalid code.", code="invalid_code")
 
-    user = await get_user_by_id(db, tok["user_id"])
-    if user is None:
-        raise TokenInvalidError("Invalid code.", code="invalid_code")
-    if user["status"] != "active":
-        raise ForbiddenError("This account is disabled.", code="user_disabled")
-    consumed = await db.execute(
-        "UPDATE login_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL",
-        (to_iso(now), tok["id"]),
-    )
-    if consumed.rowcount != 1:
-        await db.rollback()
-        raise TokenInvalidError("Invalid code.", code="invalid_code")
-    raw_session = await _insert_session(db, settings, user["id"])
-    await db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (to_iso(now), user["id"]))
-    await db.commit()
-    return raw_session, SessionUser(
-        id=user["id"], email=user["email"], is_admin=bool(user["is_admin"])
-    )
+        user = await get_user_by_id(db, tok["user_id"])
+        if user is None:
+            raise TokenInvalidError("Invalid code.", code="invalid_code")
+        if user["status"] != "active":
+            raise ForbiddenError("This account is disabled.", code="user_disabled")
+        consumed = await db.execute(
+            "UPDATE login_tokens SET used_at = ? "
+            "WHERE id = ? AND used_at IS NULL AND expires_at > ? AND attempt_count < ?",
+            (to_iso(now), tok["id"], to_iso(now), settings.LOGIN_CODE_MAX_ATTEMPTS),
+        )
+        if consumed.rowcount != 1:
+            raise TokenInvalidError("Invalid code.", code="invalid_code")
+        raw_session = await _insert_session(db, settings, user["id"])
+        await db.execute(
+            "UPDATE users SET last_login_at = ? WHERE id = ?", (to_iso(now), user["id"])
+        )
+        await db.execute("COMMIT")
+        return raw_session, SessionUser(
+            id=user["id"], email=user["email"], is_admin=bool(user["is_admin"])
+        )
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await db.execute("ROLLBACK")
+        raise
 
 
 # --- v3: User invites with quota (F-AUTH-13..18) ---
@@ -625,6 +650,23 @@ async def create_email_change(
     return raw, code, _mask_email(user["email"])
 
 
+async def peek_email_change_token(
+    db: aiosqlite.Connection, settings: Settings, raw_token: str
+) -> str:
+    """Validate an email-change token without consuming it; return the masked target email."""
+    now = now_berlin()
+    async with db.execute(
+        "SELECT * FROM email_change_requests WHERE token_hash = ?",
+        (hash_token(raw_token, settings),),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None or row["used_at"] is not None:
+        raise TokenInvalidError("Invalid request.", code="invalid_token")
+    if from_iso(row["expires_at"]) <= now:
+        raise TokenExpiredError("This request has expired.", code="change_expired")
+    return _mask_email(row["new_email"])
+
+
 async def _apply_email_change(db: aiosqlite.Connection, row: aiosqlite.Row, now) -> str:
     """Consume the request + swap the user's email; invalidate old-address login tokens."""
     consumed = await db.execute(
@@ -671,23 +713,33 @@ async def confirm_email_change_by_code(
 ) -> str:
     """Confirm via the 6-digit code (logged-in user). Returns the new email."""
     now = now_berlin()
-    async with db.execute(
-        "SELECT * FROM email_change_requests WHERE user_id = ? AND used_at IS NULL "
-        "ORDER BY created_at DESC LIMIT 1",
-        (user_id,),
-    ) as cur:
-        row = await cur.fetchone()
-    if row is None:
-        raise TokenInvalidError("Invalid request.", code="invalid_code")
-    if row["attempt_count"] >= settings.EMAIL_CHANGE_MAX_ATTEMPTS:
-        raise AppError("Too many attempts.", code="code_locked", status_code=423)
-    if from_iso(row["expires_at"]) <= now:
-        raise TokenExpiredError("This request has expired.", code="change_expired")
-    if not constant_time_equal(hash_token(code, settings), row["code_hash"]):
-        await db.execute(
-            "UPDATE email_change_requests SET attempt_count = attempt_count + 1 WHERE id = ?",
-            (row["id"],),
-        )
-        await db.commit()
-        raise TokenInvalidError("Invalid code.", code="invalid_code")
-    return await _apply_email_change(db, row, now)
+    code_hash = hash_token(code, settings)
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        async with db.execute(
+            "SELECT * FROM email_change_requests WHERE user_id = ? AND used_at IS NULL "
+            "ORDER BY created_at DESC LIMIT 1",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            raise TokenInvalidError("Invalid request.", code="invalid_code")
+        if row["attempt_count"] >= settings.EMAIL_CHANGE_MAX_ATTEMPTS:
+            raise AppError("Too many attempts.", code="code_locked", status_code=423)
+        if from_iso(row["expires_at"]) <= now:
+            raise TokenExpiredError("This request has expired.", code="change_expired")
+        if not constant_time_equal(code_hash, row["code_hash"]):
+            bumped = await db.execute(
+                "UPDATE email_change_requests SET attempt_count = attempt_count + 1 "
+                "WHERE id = ? AND used_at IS NULL AND attempt_count < ?",
+                (row["id"], settings.EMAIL_CHANGE_MAX_ATTEMPTS),
+            )
+            if bumped.rowcount != 1:
+                raise AppError("Too many attempts.", code="code_locked", status_code=423)
+            await db.execute("COMMIT")
+            raise TokenInvalidError("Invalid code.", code="invalid_code")
+        return await _apply_email_change(db, row, now)
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await db.execute("ROLLBACK")
+        raise

@@ -7,6 +7,8 @@ import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
 import type { Background, Locale, Theme } from "../types";
+import { loadSprossStore, saveSprossStore, defaultSprossStore } from "../sprossState";
+import { berlinToday } from "../status";
 
 export function SettingsPage() {
   const { t, locale, setLocale } = useI18n();
@@ -23,6 +25,7 @@ export function SettingsPage() {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delText, setDelText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [vacationOn, setVacationOn] = useState(() => loadSprossStore()?.vacation.on ?? false);
   const [emailBanner, setEmailBanner] = useState<{ tone: "danger" | "ok"; text: string } | null>(
     null,
   );
@@ -203,6 +206,27 @@ export function SettingsPage() {
               />
             </label>
             <InlineError error={patch.error} className="mt-2" />
+          </Section>
+
+          <Section title={t("nav.spross")}>
+            <label className="flex min-h-[44px] items-center justify-between gap-3">
+              {t("settings.vacation")}
+              <input
+                type="checkbox"
+                className="h-7 w-7"
+                checked={vacationOn}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  const store = loadSprossStore() ?? defaultSprossStore();
+                  saveSprossStore({
+                    ...store,
+                    vacation: { on, since: on ? berlinToday() : store.vacation.since },
+                  });
+                  setVacationOn(on);
+                }}
+              />
+            </label>
+            <p className="mt-2 text-[11px] opacity-70">{t("settings.vacationHint")}</p>
           </Section>
 
           <Section title={`${t("settings.language")} / ${t("settings.theme")}`}>

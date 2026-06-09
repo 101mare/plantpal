@@ -1,10 +1,12 @@
 """AK-V3-AUTH-10..19: 6-digit login code."""
 
+import asyncio
 from datetime import timedelta
 
 import pytest
 
 from plantpal import auth_service as auth
+from plantpal.db import connect
 from plantpal.errors import AppError, TokenExpiredError, TokenInvalidError
 from plantpal.time_utils import now_berlin, to_iso
 
@@ -36,6 +38,23 @@ async def test_wrong_code_increments(db, settings):
         await auth.verify_login_code(db, settings, "a@b.c", _wrong(code))
     async with db.execute("SELECT attempt_count FROM login_tokens WHERE used_at IS NULL") as cur:
         assert (await cur.fetchone())["attempt_count"] == 1
+
+
+async def test_parallel_wrong_codes_are_all_counted(db, settings):
+    await _user(db)
+    _raw, code = await auth.request_login_link(db, settings, "a@b.c")
+    conn2 = await connect(settings)
+    try:
+        results = await asyncio.gather(
+            auth.verify_login_code(db, settings, "a@b.c", _wrong(code)),
+            auth.verify_login_code(conn2, settings, "a@b.c", _wrong(code)),
+            return_exceptions=True,
+        )
+    finally:
+        await conn2.close()
+    assert all(isinstance(r, TokenInvalidError) for r in results)
+    async with db.execute("SELECT attempt_count FROM login_tokens WHERE used_at IS NULL") as cur:
+        assert (await cur.fetchone())["attempt_count"] == 2
 
 
 async def test_code_lockout_keeps_magic_link_alive(db, settings):

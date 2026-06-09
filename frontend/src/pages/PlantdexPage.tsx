@@ -3,12 +3,23 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
-import type { Plant } from "../types";
+import type { Plant, Stats } from "../types";
 import { PlantCard } from "../components/PlantCard";
 import { ThirstySection } from "../components/ThirstySection";
 import { AddPlantModal } from "../components/AddPlantModal";
 import { PlantDetailModal } from "../components/PlantDetailModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
+import { Spross } from "../components/Spross";
+import {
+  sprossMood,
+  berlinToday,
+  daysSince,
+  vitalityScore,
+  stageFromVitality,
+  oldestPlantAgeDays,
+  type Stage,
+} from "../status";
+import { loadSprossStore, saveSprossStore, ratchetSpross, evaluateProgress } from "../sprossState";
 
 type Sort = "thirsty" | "name" | "recent";
 
@@ -23,6 +34,9 @@ export function PlantdexPage() {
     queryKey: ["plants"],
     queryFn: api.listPlants,
   });
+  // Shares the ['stats'] cache with StatsPage; already invalidated on water/delete, so it stays
+  // fresh. Only watering_consistency_pct is read (for the "blühend" upgrade); undefined until loaded.
+  const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: api.getStats });
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Plant | null>(null);
   const [wateringId, setWateringId] = useState<number | null>(null);
@@ -30,6 +44,20 @@ export function PlantdexPage() {
   const [sort, setSort] = useState<Sort>("thirsty");
   const [pendingDelete, setPendingDelete] = useState<Set<number>>(new Set());
   const [actionError, setActionError] = useState<unknown>(null);
+  const [waterNonce, setWaterNonce] = useState(0); // bumped on water → one-shot Spross joy-wiggle
+  const [greeting, setGreeting] = useState(false); // transient ">3 days away" welcome-back
+  // v2 evolution: ratcheted stage (only ever climbs) + one-shot level-up bloom. storeExisted is the
+  // mount-time truth (read once, before any write) so the plants/stats query race can't fake a bloom.
+  const [sprossStage, setSprossStage] = useState<Stage>(
+    () => (loadSprossStore()?.stageMax ?? 2) as Stage,
+  );
+  const [bloomNonce, setBloomNonce] = useState(0);
+  const [riseNonce, setRiseNonce] = useState(0); // one-shot "straighten up" when the last thirsty plant is watered
+  const [sprossSkin, setSprossSkin] = useState<string | null>(
+    () => loadSprossStore()?.activeSkin ?? null,
+  );
+  const [vacation, setVacation] = useState(() => loadSprossStore()?.vacation.on ?? false);
+  const [storeExisted] = useState(() => loadSprossStore() !== null);
   const deleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   // Ids whose real DELETE already started (timer fired) — undo can no longer cancel these.
   const committingRef = useRef<Set<number>>(new Set());
@@ -43,6 +71,86 @@ export function PlantdexPage() {
     };
   }, []);
 
+  // Welcome-back: if the app was last opened >3 Berlin-days ago, greet once (Spross turns curious +
+  // a fading caption), then decay to the real health mood. The write is idempotent (StrictMode-safe);
+  // localStorage may throw in private mode, so it's guarded.
+  useEffect(() => {
+    try {
+      const prev = localStorage.getItem("pp:lastSeen");
+      const gap = prev ? daysSince(prev) : null;
+      if (gap !== null && gap > 3) setGreeting(true);
+      localStorage.setItem("pp:lastSeen", berlinToday());
+    } catch {
+      /* no localStorage → just skip the greeting */
+    }
+  }, []);
+  useEffect(() => {
+    if (!greeting) return;
+    const id = setTimeout(() => setGreeting(false), 6000);
+    return () => clearTimeout(id);
+  }, [greeting]);
+
+  // v2: evolve Spross from the user's own care history (vitality → ratcheted stage). Gated on BOTH
+  // queries being loaded (else the race re-seeds wrong); re-runs on refetch are safe (max() is
+  // idempotent, the bloom only fires on a genuine stage increase the user hasn't been shown yet).
+  useEffect(() => {
+    if (plants === undefined || stats === undefined) return;
+    const oldestAge = oldestPlantAgeDays(plants);
+    // If every plant's interval > 30d, the server's 30-day consistency window is empty and returns a
+    // bogus 100 — treat consistency as unreliable so a low-maintenance collection can't mint a high stage.
+    const consistencyReliable = plants.some((p) => p.interval_days <= 30);
+    const live = vitalityScore(stats, oldestAge, consistencyReliable);
+    const { store, bloom, needsServerSync } = ratchetSpross(
+      loadSprossStore(),
+      live,
+      stageFromVitality(live),
+      oldestAge,
+      storeExisted,
+      stats.vitality_stage_max,
+      stats.peak_vitality,
+    );
+    // Detect milestones + unlock skins on the SAME store (this page has plants + the session
+    // greeting; /spross only reads). One object, saved once — no clobbering.
+    const next = evaluateProgress(
+      store,
+      {
+        stageMax: store.stageMax,
+        consistencyPct: stats.watering_consistency_pct,
+        streakDays: stats.watering_streak_days,
+        thirstyCount: stats.thirsty_count,
+        totalPlants: stats.total_plants,
+        petCount: store.petCount,
+        greeting,
+      },
+      storeExisted,
+      berlinToday(),
+    );
+    saveSprossStore(next);
+    setSprossStage(next.stageMax as Stage);
+    setSprossSkin(next.activeSkin);
+    setVacation(next.vacation.on);
+    if (bloom) setBloomNonce((n) => n + 1);
+    // Persist the new high-water-mark to the server (durable across devices / storage loss). The
+    // server applies max(), so it only ever climbs; best-effort (a failed request just re-syncs on
+    // the next open). On success we patch the ['stats'] cache so we don't re-POST the same value.
+    if (needsServerSync) {
+      api
+        .updateSprossProgress(store.stageMax, store.peakVitality)
+        .then((res) =>
+          qc.setQueryData<Stats | undefined>(["stats"], (old) =>
+            old
+              ? {
+                  ...old,
+                  vitality_stage_max: res.vitality_stage_max,
+                  peak_vitality: res.peak_vitality,
+                }
+              : old,
+          ),
+        )
+        .catch(() => {});
+    }
+  }, [plants, stats, storeExisted, greeting, qc]);
+
   const water = useMutation({
     mutationFn: (id: number) => api.waterPlant(id),
     onMutate: (id) => {
@@ -55,6 +163,8 @@ export function PlantdexPage() {
       qc.invalidateQueries({ queryKey: ["stats"] });
       // The card silently drops out of the thirsty list; announce it for screen readers.
       announce(t("plant.watered"));
+      // Spross's reaction (joy-wiggle vs. recovery "rise") is derived from the thirsty-count
+      // transition below, so the two animations are mutually exclusive and never collide.
     },
     onError: (err) => setActionError(err),
   });
@@ -110,6 +220,33 @@ export function PlantdexPage() {
   );
   const thirsty = livePlants.filter((p) => p.is_thirsty);
 
+  // Spross's mood = collective health, from live plants (NOT stats.thirsty_count, so a plant in its
+  // 5s undo window can't skew it) + the consistency_pct from the shared ['stats'] cache.
+  const longestOverdueDays = useMemo(
+    () => livePlants.reduce((m, p) => Math.max(m, p.days_overdue), 0),
+    [livePlants],
+  );
+  let mood = sprossMood({
+    thirstyCount: thirsty.length,
+    longestOverdueDays,
+    consistencyPct: stats?.watering_consistency_pct,
+    justReturned: greeting,
+  });
+  if (vacation && (mood === "durstig" || mood === "welkend")) mood = "wohl"; // Urlaub: Distress dämpfen
+
+  // Spross's reaction to a watering, derived from the thirsty-count transition so joy-wiggle and the
+  // recovery "rise" are mutually exclusive (never two transforms on one sprite). Rise wins when the
+  // last thirsty plant is satisfied (relief, as fast as the decline).
+  const prevThirstyRef = useRef(thirsty.length);
+  useEffect(() => {
+    const now = thirsty.length;
+    const prev = prevThirstyRef.current;
+    prevThirstyRef.current = now;
+    if (vacation) return; // no reaction animations while resting
+    if (prev > 0 && now === 0) setRiseNonce((n) => n + 1);
+    else if (now < prev) setWaterNonce((n) => n + 1);
+  }, [thirsty.length, vacation]);
+
   // The render list keeps plants that are pending deletion, so each shows in place as an undo
   // card at its original spot. They bypass search/filter so the 5s undo window stays reachable.
   const visible = useMemo(() => {
@@ -142,6 +279,9 @@ export function PlantdexPage() {
           <img src="/wordmark.png" alt="PlantPal" className="h-9 w-auto" />
         </h1>
         <nav className="flex gap-2">
+          <Link to="/spross" className="pp-btn">
+            {t("nav.spross")}
+          </Link>
           <Link to="/stats" className="pp-btn">
             {t("nav.stats")}
           </Link>
@@ -160,7 +300,7 @@ export function PlantdexPage() {
         <ErrorState onRetry={() => qc.invalidateQueries({ queryKey: ["plants"] })} />
       ) : (plants ?? []).length === 0 ? (
         <div className="pp-frame p-8 text-center text-sm">
-          <img src="/mascot.webp" alt="" className="mx-auto mb-4 w-7" />
+          <Spross mood="neugierig" stage={sprossStage} size={96} className="mb-4" />
           <p className="pp-heading mb-2 text-sm">{t("empty.title")}</p>
           <p className="mb-4 opacity-70">{t("empty.hint")}</p>
           <button type="button" className="pp-btn" onClick={() => setAdding(true)}>
@@ -170,6 +310,35 @@ export function PlantdexPage() {
       ) : (
         <>
           <InlineError error={actionError} className="mb-3 text-center pp-halo" />
+
+          {/* Spross mood band: the daily-ritual focal point. Sits directly above the thirsty list so
+              cause (thirsty plants) and effect (Spross's posture) read as a calm MIRROR, not a nag.
+              Decorative (aria-hidden) — the thirsty count/labels below already carry the state for SR. */}
+          <Link to="/spross" className="pp-frame mb-4 flex items-center gap-3 p-3 no-underline">
+            <Spross
+              mood={mood}
+              stage={sprossStage}
+              skin={vacation ? undefined : sprossSkin}
+              rest={vacation}
+              reactNonce={waterNonce}
+              riseNonce={riseNonce}
+              bloomNonce={bloomNonce}
+              className="h-16 w-16 sm:h-24 sm:w-24"
+            />
+            {/* The visible label IS the link's accessible name (the inner Spross stays aria-hidden).
+                Greeting and stage label are mutually exclusive so they never crowd at 320px. */}
+            <span className="pp-heading min-w-0 flex-1 truncate text-xs">
+              {greeting
+                ? t("spross.greeting")
+                : t("spross.stageLabel", {
+                    n: sprossStage,
+                    name: t(`spross.stage.${sprossStage}`),
+                  })}
+            </span>
+            <span aria-hidden="true" className="text-pp-gold opacity-70">
+              ›
+            </span>
+          </Link>
           <ThirstySection plants={thirsty} onWater={water.mutate} wateringId={wateringId} />
 
           {/* Search + sort share one row; the "thirsty only" filter was dropped — thirsty plants

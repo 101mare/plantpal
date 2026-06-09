@@ -1,10 +1,12 @@
 """AK-V3-AUTH-20..28: email change (request -> verify at new address -> confirm)."""
 
+import asyncio
 from datetime import timedelta
 
 import pytest
 
 from plantpal import auth_service as auth
+from plantpal.db import connect
 from plantpal.errors import (
     AppError,
     ConflictError,
@@ -88,6 +90,25 @@ async def test_change_lockout(db, settings):
     with pytest.raises(AppError) as exc:
         await auth.confirm_email_change_by_code(db, settings, uid, code)
     assert exc.value.status_code == 423
+
+
+async def test_parallel_wrong_change_codes_are_all_counted(db, settings):
+    uid = await _user(db, "old@b.c")
+    _raw, code, _ = await auth.create_email_change(db, settings, uid, "new@b.c")
+    conn2 = await connect(settings)
+    try:
+        results = await asyncio.gather(
+            auth.confirm_email_change_by_code(db, settings, uid, _wrong(code)),
+            auth.confirm_email_change_by_code(conn2, settings, uid, _wrong(code)),
+            return_exceptions=True,
+        )
+    finally:
+        await conn2.close()
+    assert all(isinstance(r, TokenInvalidError) for r in results)
+    async with db.execute(
+        "SELECT attempt_count FROM email_change_requests WHERE used_at IS NULL"
+    ) as cur:
+        assert (await cur.fetchone())["attempt_count"] == 2
 
 
 async def test_old_login_tokens_invalidated(db, settings):

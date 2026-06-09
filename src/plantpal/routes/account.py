@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import html
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import account_export_service, auth_service, email_service, image_service, plant_service
 from ..deps import (
@@ -15,6 +16,7 @@ from ..deps import (
     current_user,
     get_db,
     require_csrf,
+    require_same_origin_submit,
     settings_dep,
 )
 from ..errors import AppError, NotFoundError
@@ -26,11 +28,72 @@ from ..models import (
     InviteResponse,
     SettingsResponse,
     SettingsUpdate,
+    SprossProgressUpdate,
 )
 from ..rate_limit import check_rate_limit, key_ip, key_user
 from ..time_utils import now_berlin, to_iso, today_berlin
 
 router = APIRouter()
+
+
+def _email_change_confirm_html(masked_new_email: str, raw_token: str) -> str:
+    """Server-rendered confirmation page for email-change links.
+
+    The emailed GET link is intentionally read-only so link scanners and previews cannot
+    consume the token. The state-changing step is the same-origin POST below.
+    """
+    masked = html.escape(masked_new_email)
+    token = html.escape(raw_token)
+    return f"""<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Email bestätigen · PlantPal</title>
+<style>
+  :root {{ color-scheme: dark; }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0d2018; color: #e8efe9;
+  }}
+  .card {{
+    width: 100%; max-width: 380px; background: #142a20; border: 1px solid #21402f;
+    border-radius: 18px; padding: 32px 28px; text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  }}
+  .logo {{ font-size: 1.1rem; font-weight: 700; margin-bottom: 18px; }}
+  h1 {{ font-size: 1.25rem; margin: 0 0 6px; }}
+  p {{ margin: 6px 0 0; color: #b8c8bd; }}
+  .email {{
+    display: block; margin: 14px 0 22px; font-size: 1.05rem;
+    font-weight: 600; color: #f3d9a6; word-break: break-all;
+  }}
+  button {{
+    width: 100%; padding: 14px 18px; border: 0; border-radius: 12px; cursor: pointer;
+    font-size: 1rem; font-weight: 600; color: #1a130a; background: #e3b878;
+    min-height: 48px;
+  }}
+  button:hover {{ background: #edc587; }}
+  .hint {{ margin-top: 18px; font-size: .85rem; color: #8aa092; }}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo">PlantPal</div>
+    <h1>Email bestätigen</h1>
+    <p>Neue Adresse</p>
+    <span class="email">{masked}</span>
+    <form method="post" action="/api/account/email/confirm-link">
+      <input type="hidden" name="token" value="{token}">
+      <button type="submit">Adresse übernehmen</button>
+    </form>
+    <p class="hint">Warst du das nicht? Schließe diese Seite einfach.</p>
+  </main>
+</body>
+</html>"""
 
 
 # --- user invites (quota-checked, multi-use) ---
@@ -115,6 +178,24 @@ async def confirm_email_change_link(
         db, key_ip(client_ip(request), "emailconfirm"), settings.RL_LOGIN_VERIFY_IP
     )
     try:
+        masked_new_email = await auth_service.peek_email_change_token(db, settings, token)
+    except AppError as exc:
+        return RedirectResponse(f"/settings?email_error={exc.code}", status_code=303)
+    return HTMLResponse(_email_change_confirm_html(masked_new_email, token))
+
+
+@router.post("/api/account/email/confirm-link")
+async def confirm_email_change_link_post(
+    request: Request,
+    token: str = Form(...),
+    db=Depends(get_db),
+    settings=Depends(settings_dep),
+):
+    await check_rate_limit(
+        db, key_ip(client_ip(request), "emailconfirm"), settings.RL_LOGIN_VERIFY_IP
+    )
+    require_same_origin_submit(request, settings)
+    try:
         await auth_service.confirm_email_change_by_token(db, settings, token)
     except AppError as exc:
         return RedirectResponse(f"/settings?email_error={exc.code}", status_code=303)
@@ -182,6 +263,24 @@ async def update_user_settings(
 async def get_stats(by_room: bool = False, user=Depends(current_user), db=Depends(get_db)):
     stats = await plant_service.compute_stats(db, user.id, by_room=by_room)
     return stats.model_dump()
+
+
+@router.post("/api/spross/progress")
+async def update_spross_progress(
+    body: SprossProgressUpdate,
+    user=Depends(current_user),
+    _csrf=Depends(require_csrf),
+    db=Depends(get_db),
+    settings=Depends(settings_dep),
+):
+    """Durable high-water-mark for the mascot's evolution stage. The server applies max(), so this
+    only ever raises the stored stage/peak — making "the stage never downgrades" true across
+    devices / cleared storage, which a localStorage-only client cannot guarantee."""
+    await check_rate_limit(db, key_user(user.id, "spross"), settings.RL_PLANT_MUTATION)
+    stage_max, peak = await plant_service.bump_spross_progress(
+        db, user.id, body.stage_max, body.peak_vitality
+    )
+    return {"vitality_stage_max": stage_max, "peak_vitality": peak}
 
 
 # --- account: delete + export ---

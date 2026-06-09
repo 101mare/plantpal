@@ -10,6 +10,7 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { PlantdexPage } from "./pages/PlantdexPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatsPage } from "./pages/StatsPage";
+import { SprossPage } from "./pages/SprossPage";
 import { ImpressumPage, DatenschutzPage } from "./pages/LegalPages";
 
 function useMe() {
@@ -111,6 +112,14 @@ export function App() {
               element={
                 <RequireAuth>
                   <StatsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/spross"
+              element={
+                <RequireAuth>
+                  <SprossPage />
                 </RequireAuth>
               }
             />

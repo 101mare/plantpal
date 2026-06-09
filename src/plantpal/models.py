@@ -170,6 +170,18 @@ class StatsResponse(BaseModel):
     avg_interval_days: float | None
     avg_configured_interval_days: float | None
     rooms: list[RoomStats] | None = None
+    # v2 Spross evolution: durable server-side high-water-mark, so the displayed stage never
+    # downgrades across devices / storage loss. Defaults keep older clients happy.
+    vitality_stage_max: int = 1
+    peak_vitality: int = 0
+
+
+class SprossProgressUpdate(BaseModel):
+    """Client-proposed Spross high-water-mark. The server applies max() against the stored
+    values, so a request can only ever RAISE the stage/peak — never lower them (tamper-safe)."""
+
+    stage_max: int = Field(ge=1, le=6)
+    peak_vitality: int = Field(ge=0, le=100)
 
 
 # --- Health ---

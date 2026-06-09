@@ -130,6 +130,19 @@ async def require_csrf(request: Request) -> None:
         raise CsrfError()
 
 
+def require_same_origin_submit(request: Request, settings: Settings) -> None:
+    """Require an explicit same-origin browser submit before issuing auth state.
+
+    This is for unauthenticated flows that cannot use double-submit CSRF yet but
+    would set a session cookie or mutate account state if consumed. Browsers can
+    omit ``Origin`` for same-origin form POSTs (Safari/iOS), so ``Referer`` is a
+    permitted fallback. Both absent is rejected.
+    """
+    candidate = request.headers.get("origin") or request.headers.get("referer")
+    if not candidate or not origin_allowed(candidate, settings):
+        raise CsrfError("Bad origin.")
+
+
 def client_ip(request: Request) -> str:
     """Hashed client IP for rate-limit keys and request logs.
 

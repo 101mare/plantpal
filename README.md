@@ -154,6 +154,56 @@ docker compose run --rm litestream restore -o /data/plantpal.db "$LITESTREAM_REP
 
 ---
 
+## Spross-Evolution (v2)
+
+Das Maskottchen **Spross** wächst durch 6 Stufen, abgeleitet aus deiner eigenen Pflege-Historie
+(keine neuen Daten — nur `GET /api/stats` + Pflanzen-Alter). **Monoton:** die Stufe ist Identität
+und klettert nur; ein Pflege-Lapsus ändert nur die *Stimmung* (durstig/welkend), nie die Stufe.
+Server-durabel via High-Water-Mark (`users.vitality_stage_max`, `max()`-only) → kein Downgrade bei
+Storage-Verlust / neuem Gerät / Private-Mode.
+
+**Vitalität (0–100):**
+
+```
+vitalität   = round(100 × careQuality × tenure)
+careQuality = 0.7·(consistency% / 100) + 0.3·min(streak / 30, 1)     # Konsistenz zuverlässig
+            = min(streak / 30, 1)                                     # falls alle Intervalle > 30 T (Konsistenz = bogus 100)
+tenure      = 0.2 + 0.8·min(ältestes_Pflanzenalter_Tage / 120, 1)     # 0.2 … 1.0
+```
+
+`careQuality × tenure` ist **multiplikativ**: Pflege schlägt Sammeln (Horten ohne Konsistenz bleibt
+niedrig) und Wachstum ist über Zeit verdient (ein Tag-0-Perfektionist bleibt Stufe 1).
+
+**Schwellen** (`STAGE_THRESHOLDS = [0, 15, 30, 48, 65, 83]`):
+
+| Vitalität | Stufe |
+| --------- | ----- |
+| 0–14      | 1 · Keimling |
+| 15–29     | 2 · Sprossling |
+| 30–47     | 3 · Blattgeist |
+| 48–64     | 4 · Rankenweiser |
+| 65–82     | 5 · Blütenwächter |
+| 83–100    | 6 · Urgeist |
+
+**Beispiel-Verlauf** (Konsistenz %, Streak, ältestes Alter → Vitalität → Stufe):
+
+| Situation | Vitalität | Stufe |
+| --------- | --------- | ----- |
+| neu, 1 Pflanze, Tag 0 (25, 0, 0)            | 4  | 1 · Keimling |
+| reine Kakteen-Sammlung, Tag 0 (bogus 100, 0) | 0  | 1 · Keimling *(Bogus-100-Falle entschärft)* |
+| ~Tag 10, gute Pflege (70, 10, 10)           | 16 | 2 · Sprossling |
+| ~Tag 30 (85, 30, 30)                        | 36 | 3 · Blattgeist |
+| ~Tag 90 (90, 30, 90)                        | 74 | 5 · Blütenwächter |
+| ~Tag 120, exzellent (95, 30+, 120)          | 96 | 6 · Urgeist |
+
+→ ermutigend früh (Stufe 2 in ~10 Tagen), Prestige (Urgeist) erst nach ~4 Monaten exzellenter Pflege.
+
+**Quelle der Wahrheit** (alle Konstanten tunebar): [`frontend/src/status.ts`](frontend/src/status.ts)
+(`vitalityScore`, `stageFromVitality`, `STAGE_THRESHOLDS`); verifiziert in `status.test.ts`.
+Die Schwellen/Trajektorie sind kalibrierbar — Werte auf echten Accounts gegenprüfen.
+
+---
+
 ## Roadmap
 
 - **M1 (dieses Release):** CRUD, Magic-Link-Auth, Plantdex, Email-Digest, Settings, Stats, Docker-Deploy.

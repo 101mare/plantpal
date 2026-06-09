@@ -12,10 +12,9 @@ export function ThirstySection({
   wateringId: number | null;
 }) {
   const { t } = useI18n();
-  if (plants.length === 0) {
-    // All watered: a slim one-line note instead of a full framed section, to save vertical space.
-    return <p className="mb-6 py-1 text-center text-xs opacity-70">{t("thirsty.allWatered")}</p>;
-  }
+  // All watered: render nothing — the Spross mood band above is the single "all good" signal now
+  // (it blooms when nothing is thirsty), so a redundant "Alles gewässert!" line was dropped.
+  if (plants.length === 0) return null;
   return (
     <div className="pp-frame mb-6 p-4">
       <h2 className="pp-heading mb-3 text-sm">{t("thirsty.title")}</h2>

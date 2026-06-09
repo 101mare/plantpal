@@ -287,6 +287,14 @@ async def compute_stats(
 
     rooms = build_room_stats(plants, today) if by_room else None
 
+    # v2 Spross: durable high-water-mark stored on the user row (max-ratcheted server-side).
+    async with db.execute(
+        "SELECT vitality_stage_max, spross_peak_vitality FROM users WHERE id = ?", (user_id,)
+    ) as cur:
+        urow = await cur.fetchone()
+    stage_max = int(urow["vitality_stage_max"]) if urow else 1
+    peak_vitality = int(urow["spross_peak_vitality"]) if urow else 0
+
     return StatsResponse(
         total_plants=total,
         thirsty_count=thirsty,
@@ -296,7 +304,27 @@ async def compute_stats(
         avg_interval_days=avg_interval,
         avg_configured_interval_days=avg_configured,
         rooms=rooms,
+        vitality_stage_max=stage_max,
+        peak_vitality=peak_vitality,
     )
+
+
+async def bump_spross_progress(
+    db: aiosqlite.Connection, user_id: int, stage_max: int, peak_vitality: int
+) -> tuple[int, int]:
+    """Raise the user's Spross high-water-mark (stage + peak) — server-side ``max()`` so a request
+    can only ever climb it, never lower it. Returns the resolved (stage_max, peak_vitality)."""
+    await db.execute(
+        "UPDATE users SET vitality_stage_max = max(vitality_stage_max, ?), "
+        "spross_peak_vitality = max(spross_peak_vitality, ?) WHERE id = ?",
+        (stage_max, peak_vitality, user_id),
+    )
+    await db.commit()
+    async with db.execute(
+        "SELECT vitality_stage_max, spross_peak_vitality FROM users WHERE id = ?", (user_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return (int(row["vitality_stage_max"]), int(row["spross_peak_vitality"]))
 
 
 def build_groups(rows: list[aiosqlite.Row]) -> list[PlantGroup]:

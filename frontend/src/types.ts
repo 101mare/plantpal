@@ -62,6 +62,9 @@ export interface Stats {
   longest_overdue: LongestOverdue | null;
   avg_interval_days: number | null;
   avg_configured_interval_days: number | null;
+  // v2 Spross evolution: durable server-side high-water-mark (never downgrades across devices).
+  vitality_stage_max: number;
+  peak_vitality: number;
 }
 
 export interface InviteListItem {
