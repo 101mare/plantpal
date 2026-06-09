@@ -128,7 +128,7 @@ export function SprossPage() {
           </div>
 
           {!isBrandNew && (
-            <p className="mb-5 text-center text-[11px] opacity-60">{t("spross.formula")}</p>
+            <p className="pp-halo mb-5 text-center text-[11px] opacity-80">{t("spross.formula")}</p>
           )}
 
           {store.skins.length > 0 && (
@@ -154,14 +154,14 @@ export function SprossPage() {
 
           <section className="pp-frame p-4">
             <h2 className="pp-heading mb-3 text-sm">{t("spross.trophies")}</h2>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {MILESTONES.map((m) => {
                 const unlocked = m.id in store.milestones;
                 const date = store.milestones[m.id];
                 return (
                   <div
                     key={m.id}
-                    className={`flex flex-col items-center gap-1 rounded-lg border-2 p-2 text-center text-[10px] ${
+                    className={`flex min-w-0 flex-col items-center gap-1 rounded-lg border-2 p-2 text-center text-[10px] ${
                       unlocked
                         ? "border-pp-border bg-pp-panel-2"
                         : "border-dashed border-pp-border opacity-50"
@@ -170,8 +170,12 @@ export function SprossPage() {
                     <span className="text-lg" aria-hidden="true">
                       {unlocked ? "🏆" : "?"}
                     </span>
-                    <span className="leading-tight">{unlocked ? t(`spross.ms.${m.id}`) : "—"}</span>
-                    {unlocked && date && <span className="opacity-60">{date}</span>}
+                    {/* Locked tiles say "Gesperrt" (not a bare "—") so a screen reader conveys state;
+                        long German trophy names wrap instead of forcing the grid wider (min-w-0). */}
+                    <span className="hyphens-auto break-words leading-tight">
+                      {unlocked ? t(`spross.ms.${m.id}`) : t("spross.locked")}
+                    </span>
+                    {unlocked && date && <span className="opacity-80">{date}</span>}
                   </div>
                 );
               })}

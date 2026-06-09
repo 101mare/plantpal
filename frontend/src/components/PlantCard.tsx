@@ -17,6 +17,8 @@ export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => voi
       <img
         src={plant.image_url ?? "/placeholder.png"}
         alt=""
+        loading="lazy"
+        decoding="async"
         onError={(e) => {
           const img = e.currentTarget;
           if (!img.src.endsWith("/placeholder.png")) img.src = "/placeholder.png"; // re-trigger-safe
@@ -31,6 +33,8 @@ export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => voi
             <span aria-hidden="true">📍</span> {plant.location_room}
           </div>
         )}
+        {/* A11Y: status as visible TEXT (not colour alone) for the non-ok states (colour-blind users). */}
+        {level !== "ok" && <div className="mt-0.5 truncate text-[10px] font-bold">{statusLabel}</div>}
       </div>
       {level === "ok" ? (
         <span

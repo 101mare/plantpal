@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -21,6 +21,7 @@ export function SettingsPage() {
   const invitesQuery = useQuery({ queryKey: ["invites"], queryFn: api.listInvites });
   const invites = invitesQuery.data;
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const inviteRef = useRef<HTMLInputElement>(null);
   const [newEmail, setNewEmail] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [delText, setDelText] = useState("");
@@ -127,7 +128,7 @@ export function SettingsPage() {
         <div
           role={emailBanner.tone === "danger" ? "alert" : "status"}
           className={`pp-frame mb-4 p-3 text-center text-[11px] ${
-            emailBanner.tone === "danger" ? "text-pp-danger" : "text-pp-gold"
+            emailBanner.tone === "danger" ? "text-pp-danger-ink" : "text-pp-gold"
           }`}
         >
           {emailBanner.text}
@@ -141,7 +142,9 @@ export function SettingsPage() {
           <Section title={t("settings.account")}>
             <p className="mb-3 break-all opacity-80">{s?.email}</p>
             <details>
-              <summary className="cursor-pointer text-pp-gold">{t("settings.changeEmail")}</summary>
+              <summary className="flex min-h-[44px] cursor-pointer items-center text-pp-gold">
+                {t("settings.changeEmail")}
+              </summary>
               <div className="mt-2 flex flex-col gap-2">
                 <input
                   type="email"
@@ -234,6 +237,7 @@ export function SettingsPage() {
               {t("settings.language")}
               <select
                 className="pp-input w-auto"
+                aria-label={t("settings.language")}
                 value={locale}
                 onChange={(e) => pickLocale(e.target.value as Locale)}
               >
@@ -245,6 +249,7 @@ export function SettingsPage() {
               {t("settings.theme")}
               <select
                 className="pp-input w-auto"
+                aria-label={t("settings.theme")}
                 value={theme}
                 onChange={(e) => pickTheme(e.target.value as Theme)}
               >
@@ -256,6 +261,7 @@ export function SettingsPage() {
               {t("settings.background")}
               <select
                 className="pp-input w-auto"
+                aria-label={t("settings.background")}
                 value={background}
                 onChange={(e) => setBackground(e.target.value as Background)}
               >
@@ -286,20 +292,30 @@ export function SettingsPage() {
             {inviteUrl && (
               <div className="mt-2 flex gap-2">
                 <input
+                  ref={inviteRef}
                   readOnly
                   value={inviteUrl}
                   onFocus={(e) => e.target.select()}
-                  className="pp-input flex-1 text-[10px]"
+                  className="pp-input min-w-0 flex-1 text-[10px]"
                 />
                 <button
                   type="button"
                   className="pp-btn"
                   onClick={() => {
-                    navigator.clipboard?.writeText(inviteUrl);
-                    // Inline confirmation at the trigger: the label briefly flips to "Copied ✓".
-                    setCopied(true);
-                    announce(t("settings.copied"));
-                    window.setTimeout(() => setCopied(false), 1500);
+                    // Only claim "Copied ✓" if the write actually resolved. On a self-hosted Pi over
+                    // http://<LAN-IP> there is no secure context, so navigator.clipboard is undefined
+                    // (or rejects) — then select the field so the user can copy manually instead of
+                    // getting a false success (UX/correctness).
+                    const p = navigator.clipboard?.writeText(inviteUrl);
+                    if (p) {
+                      p.then(() => {
+                        setCopied(true);
+                        announce(t("settings.copied"));
+                        window.setTimeout(() => setCopied(false), 1500);
+                      }).catch(() => inviteRef.current?.select());
+                    } else {
+                      inviteRef.current?.select();
+                    }
                   }}
                 >
                   {copied ? `✓ ${t("settings.copied")}` : t("settings.copy")}
@@ -315,10 +331,11 @@ export function SettingsPage() {
                   {inv.status === "active" && (
                     <button
                       type="button"
-                      className="shrink-0 px-3 py-2 underline"
+                      className="pp-tap shrink-0 px-3 underline disabled:opacity-40"
+                      disabled={revoke.isPending}
                       onClick={() => revoke.mutate(inv.id)}
                     >
-                      {t("settings.revoke")}
+                      {revoke.isPending ? "…" : t("settings.revoke")}
                     </button>
                   )}
                 </li>

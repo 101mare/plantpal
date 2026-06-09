@@ -26,7 +26,9 @@
   --color-pp-card: #5c9474; /* lightened so small card text clears 4.5:1 on card-ink (A11Y-02) */
   --color-pp-card-ink: #0a1611;
   --color-pp-thirsty: #2b5540;
-  --color-pp-danger: #ef6d5a;
+  --color-pp-danger: #ef6d5a; /* accent + border tint */
+  --color-pp-danger-ink: #ff968b; /* danger TEXT on dark panels — clears 4.5:1 (A11Y) */
+  --color-pp-banner: #9e3327; /* danger BANNER bg so white text clears 4.5:1 (A11Y) */
   --halo: #0a1611; /* base-bg colour for the on-canvas text halo (contrast floor over the wallpaper) */
   --font-pixel: "Press Start 2P", "VT323", ui-monospace, monospace;
 }
@@ -42,6 +44,8 @@
   --color-pp-card-ink: #2a2410;
   --color-pp-thirsty: #dde6cb;
   --color-pp-danger: #b3261e;
+  --color-pp-danger-ink: #b3261e; /* dark-red text on parchment already clears 4.5:1 */
+  --color-pp-banner: #b3261e; /* white on this clears 4.5:1 */
   --halo: #f3efe2; /* parchment halo so dark-gold headings stay readable over the light watermark */
 }
 
@@ -58,6 +62,21 @@ body,
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+}
+
+/* iOS standalone uses status-bar-style "black-translucent" → WHITE status-bar glyphs that become
+   unreadable over the light-theme parchment. Back the notch band with a dark scrim in BOTH themes
+   so the glyphs always have contrast. Zero height (invisible) on devices without a top inset. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: #0a1611;
+  z-index: 60;
+  pointer-events: none;
 }
 
 body {
@@ -251,6 +270,30 @@ img[alt="PlantPal"] {
 .pp-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* No 300ms tap-delay / double-tap-zoom on any tappable control (mobile); pinch-zoom is preserved. */
+button,
+a[href],
+summary,
+select,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* Text/underline controls that aren't .pp-btn still need a >=44px touch target (WCAG 2.5.5). */
+.pp-tap {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+/* Tap acknowledgement for the pet button that survives prefers-reduced-motion (no @keyframes,
+   just a press-state brightness pulse) so a reduced-motion user still sees the tap register. */
+.spross-wrap:active {
+  filter: brightness(1.12);
 }
 
 /* Visible keyboard focus everywhere; dark halo keeps the gold ring readable on every

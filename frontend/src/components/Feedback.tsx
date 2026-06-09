@@ -42,16 +42,15 @@ export function Banner({
       role={tone === "danger" ? "alert" : "status"}
       aria-live={tone === "danger" ? "assertive" : "polite"}
       className={`flex items-center justify-center gap-3 px-4 py-1.5 text-center text-[11px] font-bold text-white ${
-        tone === "danger" ? "bg-pp-danger" : "bg-pp-border"
+        tone === "danger" ? "bg-pp-banner" : "bg-pp-border"
       }`}
-      style={{ paddingTop: "max(0.375rem, env(safe-area-inset-top))" }}
     >
       <span>{message}</span>
       {action && (
         <button
           type="button"
           onClick={action.onClick}
-          className="px-3 py-2 underline underline-offset-2"
+          className="pp-tap px-3 underline underline-offset-2"
         >
           {action.label}
         </button>
@@ -61,7 +60,7 @@ export function Banner({
           type="button"
           onClick={onDismiss}
           aria-label={t("error.dismiss")}
-          className="px-3 py-2"
+          className="pp-tap min-w-[44px] px-3"
         >
           ✕
         </button>
@@ -159,7 +158,9 @@ function FallbackError() {
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="pp-frame p-8 text-center text-sm">
-        <div className="mb-3 text-3xl">🪴</div>
+        <div className="mb-3 text-3xl" aria-hidden="true">
+          🪴
+        </div>
         <p className="mb-4">{t("error.server")}</p>
         <button type="button" className="pp-btn" onClick={() => window.location.reload()}>
           {t("error.retry")}

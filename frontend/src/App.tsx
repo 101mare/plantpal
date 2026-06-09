@@ -76,13 +76,19 @@ export function App() {
       <a href="#main" className="pp-skip pp-btn">
         {t("a11y.skip")}
       </a>
-      {!online && <Banner message={t("error.offline")} />}
-      {updateReady && (
-        <Banner
-          tone="neutral"
-          message={t("update.available")}
-          action={{ label: t("update.reload"), onClick: () => window.location.reload() }}
-        />
+      {/* Global-state banners stay pinned to the top while the page scrolls, so the offline/update
+          notice doesn't scroll out of view on a long list (M: keep global state visible). */}
+      {(!online || updateReady) && (
+        <div className="sticky top-0 z-50">
+          {!online && <Banner message={t("error.offline")} />}
+          {updateReady && (
+            <Banner
+              tone="neutral"
+              message={t("update.available")}
+              action={{ label: t("update.reload"), onClick: () => window.location.reload() }}
+            />
+          )}
+        </div>
       )}
       <RouteFocus />
       <ErrorBoundary>

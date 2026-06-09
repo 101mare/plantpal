@@ -44,6 +44,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [background, setBgState] = useState<Background>(detectBackground);
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    // Keep the Android toolbar / standalone status-bar colour in sync with the active theme so a
+    // light-theme user no longer gets a mismatched dark toolbar (M: dynamic theme-color).
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "light" ? "#f3efe2" : "#0d2018");
   }, [theme]);
   useEffect(() => {
     document.documentElement.setAttribute("data-bg", background);

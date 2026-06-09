@@ -43,7 +43,7 @@ export function ThirstySection({
               onClick={() => onWater(p.id)}
               disabled={wateringId === p.id}
             >
-              💧 {wateringId === p.id ? "…" : t("plant.water")}
+              <span aria-hidden="true">💧</span> {wateringId === p.id ? "…" : t("plant.water")}
             </button>
           </div>
         ))}

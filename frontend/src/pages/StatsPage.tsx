@@ -25,7 +25,9 @@ export function StatsPage() {
         <ErrorState onRetry={() => qc.invalidateQueries({ queryKey: ["stats"] })} />
       ) : !data || data.total_plants === 0 ? (
         <div className="pp-frame p-8 text-center text-sm">
-          <div className="mb-3 text-4xl">📊</div>
+          <div className="mb-3 text-4xl" aria-hidden="true">
+            📊
+          </div>
           <p className="pp-heading mb-2 text-sm">{t("stats.empty.title")}</p>
           <p className="mb-4 opacity-70">{t("stats.empty.hint")}</p>
           <Link to="/" className="pp-btn">

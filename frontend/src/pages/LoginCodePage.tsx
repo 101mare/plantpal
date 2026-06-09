@@ -53,7 +53,13 @@ export function LoginCodePage() {
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
         <h1 className="mb-6 text-center" tabIndex={-1}>
-          <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-14 w-auto" />
+          <img
+            src="/wordmark.png"
+            alt="PlantPal"
+            width={735}
+            height={160}
+            className="mx-auto h-14 w-auto"
+          />
         </h1>
         <form onSubmit={submit} className="pp-frame flex flex-col gap-4 p-8">
           <h2 className="pp-heading text-sm">{t("login.codeTitle")}</h2>
@@ -90,7 +96,7 @@ export function LoginCodePage() {
             type="button"
             onClick={resend}
             disabled={!email || resending}
-            className="text-center text-[11px] underline opacity-80 disabled:opacity-40"
+            className="flex min-h-[44px] items-center justify-center text-[11px] underline opacity-80 disabled:opacity-40"
           >
             {resending ? "…" : t("login.resend")}
           </button>
@@ -99,7 +105,10 @@ export function LoginCodePage() {
               ✓ {t("login.resendDone")}
             </p>
           )}
-          <Link to="/login" className="text-center text-[10px] underline opacity-70">
+          <Link
+            to="/login"
+            className="flex min-h-[44px] items-center justify-center text-[10px] underline opacity-70"
+          >
             {t("nav.back")}
           </Link>
         </form>

@@ -114,12 +114,12 @@ export function PlantDetailModal({
           {plant.notes && <Row k={t("plant.notes")} v={plant.notes} />}
         </dl>
         {sizeErr && (
-          <p role="alert" className="text-center text-[11px] text-pp-danger">
+          <p role="alert" className="text-center text-[11px] text-pp-danger-ink">
             {sizeErr}
           </p>
         )}
         <InlineError error={water.error ?? uploadImg.error} className="text-center" />
-        <div className="mt-2 flex w-full gap-2">
+        <div className="mt-2 flex w-full flex-wrap gap-2">
           <button
             type="button"
             className="pp-btn flex-1"
@@ -135,13 +135,18 @@ export function PlantDetailModal({
         {/* Destructive action separated from the primary buttons to prevent mis-taps (UX-08) */}
         <button
           type="button"
-          className="mt-1 min-h-[44px] px-3 py-2 text-xs text-pp-danger underline"
+          className="mt-1 min-h-[44px] px-3 py-2 text-xs text-pp-danger-ink underline"
           onClick={() => {
             onDelete(plant);
             onClose();
           }}
         >
           <span aria-hidden="true">🗑</span> {t("plant.delete")}
+        </button>
+        {/* Explicit, visible close affordance (the backdrop tap + Escape exist, but a tappable
+            control is clearer on touch — UX). */}
+        <button type="button" onClick={onClose} className="pp-tap text-[11px] underline opacity-70">
+          {t("action.close")}
         </button>
       </div>
     </Backdrop>
@@ -185,7 +190,7 @@ function EditView({
   });
 
   return (
-    <Backdrop onClose={onClose} label={plant.name}>
+    <Backdrop onClose={onClose} label={plant.name} dismissOnBackdrop={false}>
       <h2 className="pp-heading mb-4 text-sm">{plant.name}</h2>
       <form
         className="flex flex-col gap-3"
@@ -236,7 +241,7 @@ function EditView({
           />
         </Field>
         <InlineError error={save.error} />
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button type="submit" className="pp-btn flex-1" disabled={save.isPending}>
             {save.isPending ? "…" : t("plant.save")}
           </button>

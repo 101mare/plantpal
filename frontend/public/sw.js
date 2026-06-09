@@ -40,18 +40,20 @@ self.addEventListener("fetch", (event) => {
   // HTML navigations: network-first so a fresh deploy's shell (and its new JS bundle) is
   // picked up when online; fall back to the cached shell offline (A11Y-07: no stale pinning).
   if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request)
-        .then((resp) => {
-          const isHtml = (resp.headers.get("Content-Type") || "").includes("text/html");
-          if (resp.ok && url.origin === self.location.origin && isHtml) {
-            const copy = resp.clone();
-            caches.open(CACHE).then((c) => c.put("/", copy));
-          }
-          return resp;
-        })
-        .catch(() => caches.match(event.request).then((hit) => hit || caches.match("/"))),
-    );
+    const fromCache = () => caches.match(event.request).then((hit) => hit || caches.match("/"));
+    const net = fetch(event.request).then((resp) => {
+      const isHtml = (resp.headers.get("Content-Type") || "").includes("text/html");
+      if (resp.ok && url.origin === self.location.origin && isHtml) {
+        const copy = resp.clone();
+        caches.open(CACHE).then((c) => c.put("/", copy));
+      }
+      return resp;
+    });
+    // Network-first, but don't hang on a flaky mobile connection: if the network hasn't answered
+    // within 3s, serve the cached shell so the PWA still launches instantly (the put() above keeps
+    // revalidating in the background). On a hard network error, also fall back to cache.
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(fromCache()), 3000));
+    event.respondWith(Promise.race([net, timeout]).catch(fromCache));
     return;
   }
   // Other same-origin static assets: cache-first, fall back to network, then to "/".

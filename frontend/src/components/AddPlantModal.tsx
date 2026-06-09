@@ -80,7 +80,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Backdrop onClose={onClose} label={t("nav.add")}>
+    <Backdrop onClose={onClose} label={t("nav.add")} dismissOnBackdrop={false}>
       <h2 className="pp-heading mb-4 text-sm">{t("nav.add")}</h2>
       <form className="flex flex-col gap-3" onSubmit={submit}>
         <div className="flex flex-col items-center gap-2 text-xs">
@@ -94,6 +94,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
               />
             ) : (
               <div
+                aria-hidden="true"
                 className={`flex h-24 w-24 items-center justify-center rounded border-2 border-dashed text-2xl ${
                   photoErr ? "border-pp-danger" : "border-pp-border"
                 }`}
@@ -108,9 +109,14 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
               className="text-[10px]"
               aria-label={t("plant.photo")}
               aria-invalid={!!photoErr}
+              aria-describedby={photoErr ? "addplant-photo-err" : undefined}
             />
           </label>
-          {photoErr && <span className="text-[10px] text-pp-danger">{photoErr}</span>}
+          {photoErr && (
+            <span id="addplant-photo-err" role="alert" className="text-[10px] text-pp-danger-ink">
+              {photoErr}
+            </span>
+          )}
         </div>
         <Field label={`${t("plant.name")} *`}>
           <input
@@ -154,7 +160,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
           />
         </Field>
         <InlineError error={mutation.error} />
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button type="submit" className="pp-btn flex-1" disabled={mutation.isPending}>
             {mutation.isPending ? "…" : t("plant.save")}
           </button>
@@ -230,25 +236,47 @@ export function Backdrop({
   children,
   onClose,
   label,
+  dismissOnBackdrop = true,
 }: {
   children: React.ReactNode;
   onClose: () => void;
   label?: string;
+  /** Whether a tap on the dark backdrop closes the sheet. Read-only sheets: yes; input forms: no —
+   *  a stray backdrop tap must not silently discard a half-filled form (UX-04). Escape + the explicit
+   *  Cancel/Close buttons always close. */
+  dismissOnBackdrop?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  // onClose is often an inline arrow (new identity each render) — keep it in a ref so the
+  // mount-only effect below doesn't re-run and push a second history entry on every render.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // Push a history entry so the Android / browser Back gesture (and the PWA back-swipe) closes the
+    // sheet instead of navigating away from the page — the expected mobile behaviour for an overlay.
+    window.history.pushState({ ppSheet: true }, "");
+    const onPop = () => onCloseRef.current();
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("popstate", onPop);
+      // Closed via button/Escape → our entry is still on top, pop it so Back isn't a dead no-op.
+      // Closed via Back → the entry is already gone (state no longer ours), so we don't double-pop.
+      if ((window.history.state as { ppSheet?: boolean } | null)?.ppSheet) window.history.back();
+    };
+  }, []);
   useFocusTrap(dialogRef);
-  // Portal to <body> so the dialog lives outside #main (which we mark inert above).
+  // Portal to <body> so the dialog lives outside #main (which we mark inert above). Anchored to the
+  // TOP on phones (items-start) so the focused field + action row stay above the on-screen keyboard;
+  // centred on larger screens (sm:items-center).
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 sm:items-center"
+      onClick={dismissOnBackdrop ? onClose : undefined}
       role="presentation"
     >
       <div

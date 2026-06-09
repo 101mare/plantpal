@@ -44,7 +44,13 @@ export function LoginPage() {
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-md">
         <h1 className="mb-6 text-center" tabIndex={-1}>
-          <img src="/wordmark.png" alt="PlantPal" className="mx-auto h-14 w-auto" />
+          <img
+            src="/wordmark.png"
+            alt="PlantPal"
+            width={735}
+            height={160}
+            className="mx-auto h-14 w-auto"
+          />
         </h1>
         {linkErrorCode && (
           <div role="alert" className="pp-frame mb-4 p-3 text-center text-[11px] text-pp-danger">
@@ -62,7 +68,7 @@ export function LoginPage() {
             </Link>
             <button
               type="button"
-              className="mt-3 block w-full py-2 text-xs underline"
+              className="mt-3 block min-h-[44px] w-full py-2 text-xs underline"
               onClick={() => setSent(false)}
             >
               {t("login.wrongEmail")}

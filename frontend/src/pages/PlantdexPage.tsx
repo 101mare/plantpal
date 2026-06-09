@@ -276,12 +276,11 @@ export function PlantdexPage() {
     <div className="mx-auto max-w-3xl p-4">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 tabIndex={-1}>
-          <img src="/wordmark.png" alt="PlantPal" className="h-9 w-auto" />
+          <img src="/wordmark.png" alt="PlantPal" width={735} height={160} className="h-9 w-auto" />
         </h1>
-        <nav className="flex gap-2">
-          <Link to="/spross" className="pp-btn">
-            {t("nav.spross")}
-          </Link>
+        {/* The dedicated "Spross" button was removed: the mood band below already links to /spross,
+            so it was redundant — and dropping it (plus flex-wrap) stops the nav overflowing narrow phones. */}
+        <nav className="flex flex-wrap justify-end gap-2">
           <Link to="/stats" className="pp-btn">
             {t("nav.stats")}
           </Link>
@@ -347,6 +346,7 @@ export function PlantdexPage() {
             <input
               className="pp-input min-w-0 flex-1"
               placeholder={t("list.search")}
+              aria-label={t("list.search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -416,6 +416,12 @@ function UndoCard({ name, onUndo }: { name: string; onUndo: () => void }) {
         className="pp-btn shrink-0"
         onClick={onUndo}
         aria-label={`${t("plant.undo")}: ${name}`}
+        ref={(el) => {
+          // After a delete the trigger card is gone and focus falls to <body>; pull it onto this
+          // undo button so keyboard/SR users land on the recovery action — but never steal focus
+          // if they've already tabbed elsewhere (UX/A11Y).
+          if (el && document.activeElement === document.body) el.focus();
+        }}
       >
         {t("plant.undo")}
       </button>
