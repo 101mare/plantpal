@@ -27,10 +27,10 @@ function renderCard(plant: Plant, onClick: () => void = () => {}) {
 }
 
 describe("PlantCard", () => {
-  it("shows the name and interval", () => {
+  it("shows the name (interval moved to detail sheet)", () => {
     renderCard(base);
     expect(screen.getByText("Monstera")).toBeInTheDocument();
-    expect(screen.getByText(/7/)).toBeInTheDocument();
+    expect(screen.queryByText(/7/)).toBeNull();
   });
 
   it("shows the overdue-day badge when thirsty", () => {

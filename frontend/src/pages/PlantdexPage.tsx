@@ -268,26 +268,42 @@ export function PlantdexPage() {
     return sorted;
   }, [plants, pendingDelete, search, sort]);
 
-  // Count only live plants for the heading (pending-delete cards shouldn't inflate the totals).
-  const liveCount = livePlants.length;
-  const visibleLiveCount = visible.filter((p) => !pendingDelete.has(p.id)).length;
+  const searching = search.trim().length > 0;
+  // Thirsty plants surface once, in the section above; the grid shows "the rest". While searching,
+  // every match belongs in the results (thirsty included). Pending-delete cards always stay in the
+  // grid so their 5s undo window remains reachable.
+  const gridPlants = useMemo(() => {
+    if (searching) return visible;
+    const thirstyIds = new Set(thirsty.map((p) => p.id));
+    return visible.filter((p) => pendingDelete.has(p.id) || !thirstyIds.has(p.id));
+  }, [visible, searching, thirsty, pendingDelete]);
 
   return (
     <div className="mx-auto max-w-3xl p-4">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 tabIndex={-1}>
           <img src="/wordmark.png" alt="PlantPal" width={735} height={160} className="h-9 w-auto" />
         </h1>
-        {/* The dedicated "Spross" button was removed: the mood band below already links to /spross,
-            so it was redundant — and dropping it (plus flex-wrap) stops the nav overflowing narrow phones. */}
-        <nav className="flex flex-wrap justify-end gap-2">
-          <Link to="/stats" className="pp-btn">
-            {t("nav.stats")}
+        {/* Hierarchy: ONE gold primary action ("Pflanze +"); Statistik/Einstellungen step back as
+            titled icon targets (aria-label + title → no mystery-meat). The dedicated "Spross" button
+            was removed earlier — the mood band below already links to /spross. */}
+        <nav className="flex items-center justify-end gap-2">
+          <Link to="/stats" className="pp-btn" aria-label={t("nav.stats")} title={t("nav.stats")}>
+            <span aria-hidden="true" className="text-base leading-none">
+              📊
+            </span>
           </Link>
-          <Link to="/settings" className="pp-btn">
-            {t("nav.settings")}
+          <Link
+            to="/settings"
+            className="pp-btn"
+            aria-label={t("nav.settings")}
+            title={t("nav.settings")}
+          >
+            <span aria-hidden="true" className="text-base leading-none">
+              ⚙️
+            </span>
           </Link>
-          <button type="button" className="pp-btn" onClick={() => setAdding(true)}>
+          <button type="button" className="pp-btn pp-btn-primary" onClick={() => setAdding(true)}>
             {t("nav.add")}
           </button>
         </nav>
@@ -313,7 +329,11 @@ export function PlantdexPage() {
           {/* Spross mood band: the daily-ritual focal point. Sits directly above the thirsty list so
               cause (thirsty plants) and effect (Spross's posture) read as a calm MIRROR, not a nag.
               Decorative (aria-hidden) — the thirsty count/labels below already carry the state for SR. */}
-          <Link to="/spross" className="pp-frame mb-4 flex items-center gap-3 p-3 no-underline">
+          <Link
+            to="/spross"
+            aria-label={t("nav.spross")}
+            className="pp-frame mb-4 flex items-center gap-3 p-3 no-underline"
+          >
             <Spross
               mood={mood}
               stage={sprossStage}
@@ -324,25 +344,36 @@ export function PlantdexPage() {
               bloomNonce={bloomNonce}
               className="h-16 w-16 sm:h-24 sm:w-24"
             />
-            {/* The visible label IS the link's accessible name (the inner Spross stays aria-hidden).
-                Greeting and stage label are mutually exclusive so they never crowd at 320px. */}
+            {/* A stable accessible name lives on the Link (aria-label="Spross"); the visible word now
+                carries only IDENTITY, not a rank — Mirror, not judge. The sprite mirrors the mood, the
+                chevron is the nav affordance. Stage 1 shows the mascot name "Spross" (not "Keimling",
+                which reads as a deficit); stages 2-6 show the earned stage name. */}
             <span className="pp-heading min-w-0 flex-1 truncate text-xs">
               {greeting
                 ? t("spross.greeting")
-                : t("spross.stageLabel", {
-                    n: sprossStage,
-                    name: t(`spross.stage.${sprossStage}`),
-                  })}
+                : sprossStage === 1
+                  ? t("spross.title")
+                  : t(`spross.stage.${sprossStage}`)}
             </span>
             <span aria-hidden="true" className="text-pp-gold opacity-70">
               ›
             </span>
           </Link>
-          <ThirstySection plants={thirsty} onWater={water.mutate} wateringId={wateringId} />
+          {/* Thirsty plants appear ONCE here (with a Water button). While searching, the grid below
+              carries every match instead, so this status section steps aside. */}
+          {!searching && (
+            <ThirstySection
+              plants={thirsty}
+              onWater={water.mutate}
+              wateringId={wateringId}
+              onSelect={setSelected}
+            />
+          )}
 
           {/* Search + sort share one row; the "thirsty only" filter was dropped — thirsty plants
-              already surface in the section above, so it was redundant. */}
-          <div className="mb-3 flex items-center gap-2">
+              already surface in the section above, so it was redundant. The mt-8 collapses with the
+              preceding margin to a consistent ~32px break, chunking "status above" from "catalog below". */}
+          <div className="mt-8 mb-3 flex items-center gap-2">
             <input
               className="pp-input min-w-0 flex-1"
               placeholder={t("list.search")}
@@ -365,26 +396,32 @@ export function PlantdexPage() {
             </select>
           </div>
 
-          <h2 className="pp-heading mb-3 text-sm">
-            {t("nav.plantdex")} ({search.trim() ? `${visibleLiveCount}/${liveCount}` : liveCount})
-          </h2>
-          {visible.length === 0 ? (
-            <div className="pp-frame p-6 text-center text-sm">
-              <p className="mb-3 opacity-80">{t("list.noResults")}</p>
-              <button type="button" className="pp-btn" onClick={() => setSearch("")}>
-                {t("list.resetFilters")}
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {visible.map((p) =>
-                pendingDelete.has(p.id) ? (
-                  <UndoCard key={p.id} name={p.name} onUndo={() => handleUndo(p.id)} />
-                ) : (
-                  <PlantCard key={p.id} plant={p} onClick={() => setSelected(p)} />
-                ),
+          {/* Catalog zone. Hidden entirely when there's nothing left to show and we're not searching
+              (no orphan heading, no false "no results"); the "no results" box appears only on a search. */}
+          {(gridPlants.length > 0 || searching) && (
+            <>
+              <h2 className="pp-heading mb-3 text-sm">{t("nav.plantdex")}</h2>
+              {gridPlants.length === 0 ? (
+                searching ? (
+                  <div className="pp-frame p-6 text-center text-sm">
+                    <p className="mb-3 opacity-80">{t("list.noResults")}</p>
+                    <button type="button" className="pp-btn" onClick={() => setSearch("")}>
+                      {t("list.resetFilters")}
+                    </button>
+                  </div>
+                ) : null
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {gridPlants.map((p) =>
+                    pendingDelete.has(p.id) ? (
+                      <UndoCard key={p.id} name={p.name} onUndo={() => handleUndo(p.id)} />
+                    ) : (
+                      <PlantCard key={p.id} plant={p} onClick={() => setSelected(p)} />
+                    ),
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </>
       )}

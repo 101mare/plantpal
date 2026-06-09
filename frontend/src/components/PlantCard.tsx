@@ -27,14 +27,15 @@ export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => voi
       />
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs font-bold uppercase">{plant.name}</div>
-        <div className="mt-1 text-[10px]">{t("plant.everyDays", { n: plant.interval_days })}</div>
+        {/* A11Y: status as visible TEXT (not colour alone) for the non-ok states (colour-blind users).
+            Sits directly under the name — the only daily-relevant secondary info. The set-and-forget
+            interval moved to the detail sheet (Progressive Disclosure). */}
+        {level !== "ok" && <div className="mt-1 truncate text-[11px] font-bold">{statusLabel}</div>}
         {plant.location_room && (
-          <div className="truncate text-[10px]">
+          <div className="mt-0.5 truncate text-[10px] opacity-70">
             <span aria-hidden="true">📍</span> {plant.location_room}
           </div>
         )}
-        {/* A11Y: status as visible TEXT (not colour alone) for the non-ok states (colour-blind users). */}
-        {level !== "ok" && <div className="mt-0.5 truncate text-[10px] font-bold">{statusLabel}</div>}
       </div>
       {level === "ok" ? (
         <span
