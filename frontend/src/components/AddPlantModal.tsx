@@ -22,6 +22,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [photoErr, setPhotoErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -85,7 +86,16 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
       <form className="flex flex-col gap-3" onSubmit={submit}>
         <div className="flex flex-col items-center gap-2 text-xs">
           <span className="pp-heading text-[10px]">{t("plant.photo")} *</span>
-          <label className="flex flex-col items-center gap-2">
+          {/* The picker is a hidden <input> triggered by tappable controls (>=44pt). A bare
+              <input type="file"> renders a sub-44pt native button on iOS (touch/A11Y). */}
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            aria-label={t("plant.photo")}
+            aria-invalid={!!photoErr}
+            aria-describedby={photoErr ? "addplant-photo-err" : undefined}
+            className="rounded"
+          >
             {preview ? (
               <img
                 src={preview}
@@ -102,16 +112,22 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
                 📷
               </div>
             )}
-            <input
-              type="file"
-              accept={IMAGE_ACCEPT}
-              onChange={pick}
-              className="text-[10px]"
-              aria-label={t("plant.photo")}
-              aria-invalid={!!photoErr}
-              aria-describedby={photoErr ? "addplant-photo-err" : undefined}
-            />
-          </label>
+          </button>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="pp-tap text-[11px] underline opacity-80"
+          >
+            {preview ? t("plant.replacePhoto") : t("plant.photo")}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            onChange={pick}
+            className="hidden"
+            tabIndex={-1}
+          />
           {photoErr && (
             <span id="addplant-photo-err" role="alert" className="text-[10px] text-pp-danger-ink">
               {photoErr}
@@ -160,7 +176,9 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
           />
         </Field>
         <InlineError error={mutation.error} />
-        <div className="mt-2 flex flex-wrap gap-2">
+        {/* Sticky action row: with the keyboard open on a small phone the 6-field form scrolls, so the
+            primary CTA (Save) stays pinned + reachable instead of below the scroll boundary (UX). */}
+        <div className="sticky bottom-0 -mx-6 -mb-6 mt-2 flex flex-wrap gap-2 border-t-2 border-pp-border bg-pp-panel px-6 py-3">
           <button type="submit" className="pp-btn flex-1" disabled={mutation.isPending}>
             {mutation.isPending ? "…" : t("plant.save")}
           </button>
