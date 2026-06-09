@@ -7,7 +7,7 @@ export function LangThemeBar() {
   const { t, locale, setLocale } = useI18n();
   const { theme, toggle } = useTheme();
   return (
-    <div className="mt-4 flex flex-col items-center gap-2 text-[10px]">
+    <div className="mt-4 flex flex-col items-center gap-2 text-xs">
       <div className="flex items-center gap-4">
         <button
           type="button"

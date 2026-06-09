@@ -58,10 +58,13 @@ export function RegisterPage() {
                 <input
                   type="email"
                   required
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pp-input mt-2"
-                  placeholder="du@beispiel.de"
+                  placeholder={t("login.emailPlaceholder")}
                 />
               </label>
               <button type="submit" className="pp-btn" disabled={busy}>

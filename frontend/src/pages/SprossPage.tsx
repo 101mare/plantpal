@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
+import { useAppShell } from "../appShell";
 import { ErrorState } from "../components/Feedback";
 import { Spross } from "../components/Spross";
 import { growthFraction, berlinToday, STAGE_THRESHOLDS, type Stage } from "../status";
@@ -24,6 +25,7 @@ import {
  */
 export function SprossPage() {
   const { t } = useI18n();
+  const { setSpross } = useAppShell();
   const qc = useQueryClient();
   const {
     data: stats,
@@ -97,29 +99,67 @@ export function SprossPage() {
               onPet={pet}
               className="h-36 w-36"
             />
+            {/* One-time nudge that the sprite is interactive; self-removes after the first pet. */}
+            {!isBrandNew && store.petCount === 0 && (
+              <p className="text-[11px] uppercase opacity-50" aria-hidden="true">
+                {t("spross.tap")}
+              </p>
+            )}
             {isBrandNew ? (
               <p className="text-sm opacity-80">{t("spross.empty")}</p>
             ) : (
               <>
                 <p className="pp-heading text-sm">{stageName}</p>
-                <div
-                  className="h-3 w-full overflow-hidden rounded-full border border-pp-border bg-pp-panel-2"
-                  aria-hidden="true"
-                >
+                {/* Tight progress group: stageName | this group | vacation read as 3 hero units. */}
+                <div className="flex w-full flex-col items-center gap-1">
                   <div
-                    className="h-full bg-pp-gold"
-                    style={{ width: `${Math.round(growthFraction(peak, stageMax) * 100)}%` }}
-                  />
+                    className="h-3 w-full overflow-hidden rounded-full border border-pp-border bg-pp-panel-2"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="h-full bg-pp-gold"
+                      style={{ width: `${Math.round(growthFraction(peak, stageMax) * 100)}%` }}
+                    />
+                  </div>
+                  {/* The bar is aria-hidden, so surface the value that drives it as text. */}
+                  <p className="text-[11px] uppercase opacity-80">
+                    {t("spross.vitality", { n: peak })}
+                  </p>
+                  <p className="text-[11px] uppercase opacity-60">
+                    {nextThreshold !== null
+                      ? t("spross.nextAt", { n: nextThreshold })
+                      : t("spross.maxStage")}
+                  </p>
                 </div>
-                <p className="text-[10px] uppercase opacity-70">
-                  {nextThreshold !== null
-                    ? t("spross.nextAt", { n: nextThreshold })
-                    : t("spross.maxStage")}
-                </p>
                 {vacation && <p className="text-xs text-pp-gold">{t("spross.vacationActive")}</p>}
               </>
             )}
           </div>
+
+          {/* Vacation toggle lives beside the companion it visibly rests (relocated from Settings —
+              identical read/write, no logic change). Always rendered to preserve feature parity. */}
+          <section className="pp-frame mb-4 p-4 text-xs">
+            <label className="flex min-h-[44px] items-center justify-between gap-3">
+              {t("settings.vacation")}
+              <input
+                type="checkbox"
+                className="h-7 w-7"
+                checked={vacation}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  const next = {
+                    ...store,
+                    vacation: { on, since: on ? berlinToday() : store.vacation.since },
+                  };
+                  saveSprossStore(next);
+                  setStore(next);
+                  // Mirror into the central TabBar sprite so the dormant look shows immediately.
+                  setSpross((p) => ({ ...p, vacation: on }));
+                }}
+              />
+            </label>
+            <p className="mt-2 text-[11px] opacity-70">{t("settings.vacationHint")}</p>
+          </section>
 
           {store.skins.length > 0 && (
             <section className="pp-frame mb-4 p-4">
@@ -153,21 +193,26 @@ export function SprossPage() {
                   return (
                     <div
                       key={m.id}
-                      className={`flex min-w-0 flex-col items-center gap-1 rounded-lg border-2 p-2 text-center text-[10px] ${
+                      className={`flex min-w-0 flex-col items-center gap-1 rounded-lg border-2 p-2 text-center text-[11px] ${
                         unlocked
                           ? "border-pp-border bg-pp-panel-2"
                           : "border-dashed border-pp-border opacity-50"
                       }`}
                     >
                       <span className="text-lg" aria-hidden="true">
-                        {unlocked ? "🏆" : "?"}
+                        {unlocked ? "🏆" : "🔒"}
                       </span>
-                      {/* Locked tiles say "Gesperrt" (not a bare "—") so a screen reader conveys state;
-                          long German trophy names wrap instead of forcing the grid wider (min-w-0). */}
+                      {/* Always name the goal (grey/dashed when locked) so it reads as a target to pull
+                          toward, not a wall of mystery boxes. Long German names wrap (min-w-0);
+                          sr-only keeps the "locked" state for VoiceOver. */}
                       <span className="hyphens-auto break-words leading-tight">
-                        {unlocked ? t(`spross.ms.${m.id}`) : t("spross.locked")}
+                        {t(`spross.ms.${m.id}`)}
                       </span>
-                      {unlocked && date && <span className="opacity-80">{date}</span>}
+                      {unlocked ? (
+                        date && <span className="opacity-80">{date}</span>
+                      ) : (
+                        <span className="sr-only">{t("spross.locked")}</span>
+                      )}
                     </div>
                   );
                 })}
@@ -194,7 +239,7 @@ function SkinButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`pp-btn ${active ? "" : "opacity-70"}`}
+      className={`pp-btn ${active ? "ring-2 ring-pp-gold ring-offset-2 ring-offset-pp-panel" : "opacity-70"}`}
     >
       {label}
     </button>

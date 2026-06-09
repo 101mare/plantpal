@@ -53,7 +53,7 @@ export function LoginPage() {
           />
         </h1>
         {linkErrorCode && (
-          <div role="alert" className="pp-frame mb-4 p-3 text-center text-[11px] text-pp-danger">
+          <div role="alert" className="pp-frame mb-4 p-3 text-center text-sm text-pp-danger">
             {codeMessage(linkErrorCode, t)}
           </div>
         )}
@@ -85,10 +85,11 @@ export function LoginPage() {
                 autoComplete="email"
                 autoCapitalize="none"
                 spellCheck={false}
+                enterKeyHint="send"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="pp-input mt-2"
-                placeholder="du@beispiel.de"
+                placeholder={t("login.emailPlaceholder")}
               />
             </label>
             <button type="submit" className="pp-btn" disabled={busy}>

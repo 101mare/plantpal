@@ -40,6 +40,7 @@ export function StatsPage() {
           <Stat label={t("stats.consistency")} value={`${data.watering_consistency_pct}%`} />
           <div className="col-span-2">
             <Stat
+              detail
               label={t("stats.longestOverdue")}
               value={
                 data.longest_overdue
@@ -54,11 +55,31 @@ export function StatsPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  detail = false,
+}: {
+  label: string;
+  value: string;
+  detail?: boolean;
+}) {
+  // A narrative string (e.g. "Monstera (14d)") doesn't belong in the big-number KPI slot — render
+  // it as a left-aligned group-list row so it can't read as the most prominent stat or overflow.
+  if (detail) {
+    return (
+      <div className="pp-frame flex flex-col gap-1 p-4">
+        <span className="text-[11px] uppercase opacity-70">{label}</span>
+        <span className="break-words text-sm font-semibold text-pp-gold">{value}</span>
+      </div>
+    );
+  }
+  // Label is FIRST in the DOM (VoiceOver reads "Plants" then "42"); flex-col-reverse keeps the big
+  // number visually on top. 11px lifts the label off the readability floor of Press Start 2P.
   return (
-    <div className="pp-frame flex flex-col items-center gap-2 p-6 text-center">
+    <div className="pp-frame flex flex-col-reverse items-center gap-2 p-6 text-center">
+      <span className="text-[11px] uppercase opacity-80">{label}</span>
       <span className="break-words text-2xl font-bold text-pp-gold">{value}</span>
-      <span className="text-[10px] uppercase opacity-80">{label}</span>
     </div>
   );
 }

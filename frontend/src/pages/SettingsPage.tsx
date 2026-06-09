@@ -6,15 +6,11 @@ import { codeMessage, useI18n } from "../i18n";
 import { useTheme } from "../theme";
 import { Backdrop } from "../components/AddPlantModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
-import { useAppShell } from "../appShell";
 import type { Background, Locale, Theme } from "../types";
-import { loadSprossStore, saveSprossStore, defaultSprossStore } from "../sprossState";
-import { berlinToday } from "../status";
 
 export function SettingsPage() {
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme, background, setBackground } = useTheme();
-  const { setSpross } = useAppShell();
   const qc = useQueryClient();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -28,7 +24,7 @@ export function SettingsPage() {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delText, setDelText] = useState("");
   const [copied, setCopied] = useState(false);
-  const [vacationOn, setVacationOn] = useState(() => loadSprossStore()?.vacation.on ?? false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [emailBanner, setEmailBanner] = useState<{ tone: "danger" | "ok"; text: string } | null>(
     null,
   );
@@ -141,10 +137,16 @@ export function SettingsPage() {
         <>
           <Section title={t("settings.account")}>
             <p className="mb-3 break-all opacity-80">{s?.email}</p>
-            <details>
-              <summary className="flex min-h-[44px] cursor-pointer items-center text-pp-gold">
-                {t("settings.changeEmail")}
-              </summary>
+            <button
+              type="button"
+              className="pp-tap flex min-h-[44px] w-full items-center justify-between"
+              aria-expanded={emailOpen}
+              onClick={() => setEmailOpen((o) => !o)}
+            >
+              <span>{t("settings.changeEmail")}</span>
+              <span aria-hidden="true">{emailOpen ? "▾" : "›"}</span>
+            </button>
+            {emailOpen && (
               <div className="mt-2 flex flex-col gap-2">
                 <input
                   type="email"
@@ -172,10 +174,10 @@ export function SettingsPage() {
                   </p>
                 )}
               </div>
-            </details>
+            )}
           </Section>
 
-          <Section title={t("settings.emailReminders")}>
+          <Section title={t("settings.notificationsSection")}>
             <label className="flex min-h-[44px] items-center justify-between gap-3">
               {t("settings.emailReminders")}
               <input
@@ -188,13 +190,12 @@ export function SettingsPage() {
             <label className="mt-3 flex items-center justify-between gap-3">
               {t("settings.reminderHour")}
               <input
-                type="number"
-                min={0}
-                max={23}
+                type="text"
                 inputMode="numeric"
                 className="pp-input w-20"
                 key={s?.reminder_hour ?? 8}
                 defaultValue={s?.reminder_hour ?? 8}
+                placeholder="8"
                 onBlur={(e) => {
                   const raw = e.target.value.trim();
                   if (raw === "") {
@@ -208,34 +209,12 @@ export function SettingsPage() {
                 }}
               />
             </label>
+            {/* The valid range was only enforced (invisibly) in onBlur — make it legible. */}
+            <p className="mt-1 text-[11px] opacity-60">0 – 23 {t("settings.reminderHourUnit")}</p>
             <InlineError error={patch.error} className="mt-2" />
           </Section>
 
-          <Section title={t("nav.spross")}>
-            <label className="flex min-h-[44px] items-center justify-between gap-3">
-              {t("settings.vacation")}
-              <input
-                type="checkbox"
-                className="h-7 w-7"
-                checked={vacationOn}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  const store = loadSprossStore() ?? defaultSprossStore();
-                  saveSprossStore({
-                    ...store,
-                    vacation: { on, since: on ? berlinToday() : store.vacation.since },
-                  });
-                  setVacationOn(on);
-                  // Mirror vacation into the central TabBar sprite immediately, so the rest/dormant
-                  // look shows even though PlantdexPage (which otherwise pushes vacation) isn't mounted.
-                  setSpross((p) => ({ ...p, vacation: on }));
-                }}
-              />
-            </label>
-            <p className="mt-2 text-[11px] opacity-70">{t("settings.vacationHint")}</p>
-          </Section>
-
-          <Section title={`${t("settings.language")} / ${t("settings.theme")}`}>
+          <Section title={t("settings.display")}>
             <div className="flex items-center justify-between gap-3">
               {t("settings.language")}
               <select
@@ -281,99 +260,126 @@ export function SettingsPage() {
           </Section>
 
           <Section title={t("settings.invites")}>
-            <p className="mb-2 opacity-70">
-              {t("settings.inviteQuota", { n: s?.invite_quota ?? 0 })}
-            </p>
-            <button
-              type="button"
-              className="pp-btn w-full"
-              disabled={createInvite.isPending}
-              onClick={() => createInvite.mutate()}
-            >
-              {t("settings.createInvite")}
-            </button>
-            {inviteUrl && (
-              <div className="mt-2 flex gap-2">
-                <input
-                  ref={inviteRef}
-                  readOnly
-                  value={inviteUrl}
-                  onFocus={(e) => e.target.select()}
-                  className="pp-input min-w-0 flex-1 text-[10px]"
-                />
+            {(s?.invite_quota ?? 0) === 0 && (invites ?? []).length === 0 ? (
+              // First-run users (no quota, no history): a quiet line instead of a dead Create button
+              // that could only return invite_quota_exceeded. Full UI returns once quota>0 or any
+              // invite exists — so nothing (incl. revoke history) is lost.
+              <p className="text-[11px] opacity-60">{t("settings.inviteNone")}</p>
+            ) : (
+              <>
+                <p className="mb-2 opacity-70">
+                  {t("settings.inviteQuota", { n: s?.invite_quota ?? 0 })}
+                </p>
                 <button
                   type="button"
-                  className="pp-btn"
-                  onClick={() => {
-                    // Only claim "Copied ✓" if the write actually resolved. On a self-hosted Pi over
-                    // http://<LAN-IP> there is no secure context, so navigator.clipboard is undefined
-                    // (or rejects) — then select the field so the user can copy manually instead of
-                    // getting a false success (UX/correctness).
-                    const p = navigator.clipboard?.writeText(inviteUrl);
-                    if (p) {
-                      p.then(() => {
-                        setCopied(true);
-                        announce(t("settings.copied"));
-                        window.setTimeout(() => setCopied(false), 1500);
-                      }).catch(() => inviteRef.current?.select());
-                    } else {
-                      inviteRef.current?.select();
-                    }
-                  }}
+                  className="pp-btn w-full"
+                  disabled={createInvite.isPending}
+                  onClick={() => createInvite.mutate()}
                 >
-                  {copied ? `✓ ${t("settings.copied")}` : t("settings.copy")}
+                  {t("settings.createInvite")}
                 </button>
-              </div>
-            )}
-            <ul className="mt-3 flex flex-col gap-2">
-              {(invites ?? []).map((inv) => (
-                <li key={inv.id} className="flex items-center justify-between gap-2 text-[10px]">
-                  <span className="min-w-0 break-words">
-                    {inv.used_count}/{inv.max_uses} {t("settings.inviteUses")} · {inv.status}
-                  </span>
-                  {inv.status === "active" && (
+                {inviteUrl && (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      ref={inviteRef}
+                      readOnly
+                      value={inviteUrl}
+                      onFocus={(e) => e.target.select()}
+                      className="pp-input min-w-0 flex-1 text-[10px]"
+                    />
                     <button
                       type="button"
-                      className="pp-tap shrink-0 px-3 underline disabled:opacity-40"
-                      disabled={revoke.isPending}
-                      onClick={() => revoke.mutate(inv.id)}
+                      className="pp-btn"
+                      onClick={() => {
+                        // Only claim "Copied ✓" if the write actually resolved. On a self-hosted Pi over
+                        // http://<LAN-IP> there is no secure context, so navigator.clipboard is undefined
+                        // (or rejects) — then select the field so the user can copy manually instead of
+                        // getting a false success (UX/correctness).
+                        const p = navigator.clipboard?.writeText(inviteUrl);
+                        if (p) {
+                          p.then(() => {
+                            setCopied(true);
+                            announce(t("settings.copied"));
+                            // Collapse the ~60-char read-only field once the copy is confirmed; the
+                            // insecure-context path below keeps it for manual selection.
+                            window.setTimeout(() => {
+                              setCopied(false);
+                              setInviteUrl(null);
+                            }, 1500);
+                          }).catch(() => inviteRef.current?.select());
+                        } else {
+                          inviteRef.current?.select();
+                        }
+                      }}
                     >
-                      {revoke.isPending ? "…" : t("settings.revoke")}
+                      {copied ? `✓ ${t("settings.copied")}` : t("settings.copy")}
                     </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <InlineError
-              error={invitesQuery.error ?? createInvite.error ?? revoke.error}
-              className="mt-2"
-            />
+                  </div>
+                )}
+                <ul className="mt-3 flex flex-col gap-2">
+                  {(invites ?? []).map((inv) => (
+                    <li
+                      key={inv.id}
+                      className="flex items-center justify-between gap-2 text-[10px]"
+                    >
+                      <span className="min-w-0 break-words">
+                        {inv.used_count}/{inv.max_uses} {t("settings.inviteUses")} · {inv.status}
+                      </span>
+                      {inv.status === "active" && (
+                        <button
+                          type="button"
+                          className="pp-tap shrink-0 px-3 underline disabled:opacity-40"
+                          disabled={revoke.isPending}
+                          onClick={() => revoke.mutate(inv.id)}
+                        >
+                          {revoke.isPending ? "…" : t("settings.revoke")}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <InlineError
+                  error={invitesQuery.error ?? createInvite.error ?? revoke.error}
+                  className="mt-2"
+                />
+              </>
+            )}
           </Section>
 
-          <div className="flex flex-col gap-2">
-            <a href={api.exportUrl()} className="pp-btn text-center" download>
-              {t("settings.export")}
-            </a>
-            <button
-              type="button"
-              className="pp-btn"
-              disabled={logout.isPending}
-              onClick={() => logout.mutate()}
-            >
-              {logout.isPending ? "…" : t("settings.logout")}
-            </button>
-            <InlineError error={logout.error} />
-            <button
-              type="button"
-              className="pp-btn"
-              style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
-              onClick={() => {
-                setDelText("");
-                setConfirmDel(true);
-              }}
-            >
-              {t("settings.deleteAccount")}
-            </button>
+          <Section title={t("settings.dataSection")}>
+            <div className="flex flex-col gap-2">
+              <a href={api.exportUrl()} className="pp-btn text-center" download>
+                {t("settings.export")}
+              </a>
+              <button
+                type="button"
+                className="pp-btn"
+                disabled={logout.isPending}
+                onClick={() => logout.mutate()}
+              >
+                {logout.isPending ? "…" : t("settings.logout")}
+              </button>
+              <InlineError error={logout.error} />
+            </div>
+          </Section>
+
+          {/* The one irreversible action — spatially (mt-8) and chromatically (danger frame) isolated.
+              Logout stays NEUTRAL above: it's reversible and doesn't belong in a danger zone. */}
+          <div className="mt-8">
+            <Section title={t("settings.danger")} tone="danger">
+              <p className="mb-2 text-[11px] opacity-70">{t("settings.deleteHint")}</p>
+              <button
+                type="button"
+                className="pp-btn w-full"
+                style={{ background: "#7c3a3a", borderColor: "#5e2a2a" }}
+                onClick={() => {
+                  setDelText("");
+                  setConfirmDel(true);
+                }}
+              >
+                {t("settings.deleteAccount")}
+              </button>
+            </Section>
           </div>
 
           {confirmDel && (
@@ -430,10 +436,29 @@ export function SettingsPage() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  children,
+  tone = "default",
+}: {
+  title: string;
+  children: ReactNode;
+  tone?: "default" | "danger";
+}) {
+  const danger = tone === "danger";
+  // Inline colors: .pp-frame's `border` shorthand and .pp-heading's `color` are unlayered, so they
+  // win the cascade over Tailwind utilities — an inline style is the reliable danger override.
   return (
-    <div className="pp-frame mb-4 p-4 text-xs">
-      <h2 className="pp-heading mb-2 text-xs">{title}</h2>
+    <div
+      className="pp-frame mb-4 p-4 text-xs"
+      style={danger ? { borderColor: "var(--color-pp-danger)" } : undefined}
+    >
+      <h2
+        className="pp-heading mb-2 text-xs"
+        style={danger ? { color: "var(--color-pp-danger-ink)" } : undefined}
+      >
+        {title}
+      </h2>
       {children}
     </div>
   );
