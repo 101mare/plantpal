@@ -141,16 +141,18 @@ export function SettingsPage() {
               type="button"
               className="pp-tap flex min-h-[44px] w-full items-center justify-between"
               aria-expanded={emailOpen}
+              aria-controls="email-change-panel"
               onClick={() => setEmailOpen((o) => !o)}
             >
               <span>{t("settings.changeEmail")}</span>
               <span aria-hidden="true">{emailOpen ? "▾" : "›"}</span>
             </button>
             {emailOpen && (
-              <div className="mt-2 flex flex-col gap-2">
+              <div id="email-change-panel" className="mt-2 flex flex-col gap-2">
                 <input
                   type="email"
                   className="pp-input"
+                  aria-label={t("settings.newEmail")}
                   placeholder={t("settings.newEmail")}
                   value={newEmail}
                   onChange={(e) => {

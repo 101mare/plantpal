@@ -294,6 +294,10 @@ export function Backdrop({
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 sm:items-center"
+      // Float below the notch: the dialog is portaled to <body> (bypassing #root's safe-area pad), and
+      // the body::before notch scrim (z-60) sits above this z-50 layer, so a flat 16px top would hide
+      // the sheet header behind it on notched iPhones.
+      style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
       onClick={dismissOnBackdrop ? onClose : undefined}
       role="presentation"
     >

@@ -33,6 +33,8 @@ interface SprossProps {
   bloomNonce?: number;
   /** If set, Spross becomes a real <button> (>=44px) that replays the wiggle. Else decorative. */
   onPet?: () => void;
+  /** Accessible name for the pet button (i18n) — should describe the action. Only used with onPet. */
+  ariaLabel?: string;
   className?: string;
 }
 
@@ -54,6 +56,7 @@ export function Spross({
   riseNonce,
   bloomNonce,
   onPet,
+  ariaLabel,
   className,
 }: SprossProps) {
   const [reacting, setReacting] = useState(false);
@@ -129,7 +132,7 @@ export function Spross({
     return (
       <button
         type="button"
-        aria-label="Spross"
+        aria-label={ariaLabel ?? "Spross"}
         onClick={onPet}
         onAnimationEnd={onWrapEnd}
         className={wrapCls}

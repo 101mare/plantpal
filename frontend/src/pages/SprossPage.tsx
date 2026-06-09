@@ -68,6 +68,7 @@ export function SprossPage() {
     const next = { ...store, activeSkin: id };
     saveSprossStore(next);
     setStore(next);
+    setSpross((p) => ({ ...p, skin: id })); // mirror to the TabBar's central sprite immediately
   }
 
   const isBrandNew = (stats?.total_plants ?? 0) === 0 && stageMax === 1;
@@ -97,6 +98,7 @@ export function SprossPage() {
               rest={vacation}
               reactNonce={petNonce}
               onPet={pet}
+              ariaLabel={t("spross.pet")}
               className="h-36 w-36"
             />
             {/* One-time nudge that the sprite is interactive; self-removes after the first pet. */}

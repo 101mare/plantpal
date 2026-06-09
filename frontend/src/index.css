@@ -283,16 +283,7 @@ img[alt="PlantPal"] {
   opacity: 0.5;
   cursor: not-allowed;
 }
-/* The single primary CTA ("Pflanze +"): warm gold so the eye lands there first. Dark ink on gold
-   clears ~9.6:1; light mode uses white text on the darkened gold (~4.8:1) — both >=4.5:1. */
-.pp-btn-primary {
-  background: var(--color-pp-gold);
-  color: var(--color-pp-card-ink);
-  border-color: var(--color-pp-gold);
-}
-:root[data-theme="light"] .pp-btn-primary {
-  color: #fff;
-}
+/* (Removed dead .pp-btn-primary — the single gold CTA is now the ➕ tab in the TabBar.) */
 
 /* No 300ms tap-delay / double-tap-zoom on any tappable control (mobile); pinch-zoom is preserved. */
 button,
@@ -465,7 +456,8 @@ select,
   position: relative;
   z-index: 1;
   flex: 1 1 0;
-  min-height: 44px; /* maintenance floor (siblings get it from .pp-tab) */
+  min-height: 44px;
+  min-width: 44px; /* maintenance floor (siblings get it from .pp-tab) */
   display: flex;
   align-items: center;
   justify-content: center;
