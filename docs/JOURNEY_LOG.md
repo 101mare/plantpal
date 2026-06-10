@@ -14,9 +14,9 @@
 | 1 — UX-Deep-Research | ✅ abgeschlossen 2026-06-10 (`docs/UX_RESEARCH_PRODUCTION.md`) |
 | 2 — UX-Umsetzung | ✅ Kern abgeschlossen 2026-06-10 (Codex-Review läuft; D2–D5-Restsweep im Phase-6-Verify) |
 | 3 — Backend-/DB-Härtung | ✅ abgeschlossen 2026-06-10 (Audit: produktionsreif) |
-| 4 — Pi-Hosting-Paket | offen |
-| 5 — iOS-Paket | offen |
-| 6 — Abschluss | offen |
+| 4 — Pi-Hosting-Paket | ✅ abgeschlossen 2026-06-10 (Runbook + ARM64 verifiziert + Compose-Limits) |
+| 5 — iOS-Paket | ✅ abgeschlossen 2026-06-10 (Capacitor-Gerüst + Review-Account + Checkliste + Asset-Prompts) |
+| 6 — Abschluss | 🔄 läuft (Codex-Fixes ✅, Lighthouse-Pass ✅ 80/100/100, Session-Verify-Workflow läuft) |
 
 ## Baseline (Phase 0, 2026-06-10)
 
@@ -130,7 +130,21 @@ bootet durch die Migrationen. Litestream bleibt als optionales Off-site-Profil.
 SameSite=Lax, CSRF double-submit, keine sensiblen Daten in Logs, keine print()-Reste,
 Upload-Pipeline limitiert (Größe/Pixel/Content-Type). Header seit D1 korrekt.
 
+## Phase 4–6 Kurzprotokoll
+
+- **Codex-Review (Phasen 0–3-Diff):** kein P0; 3 bestätigte Findings (Band/Grid-Dedupe,
+  Exit-A11y-Label, Multipart-Edge) → gefixt in `7bc13d2`.
+- **Phase 4:** `8da25bc` — PI_RUNBOOK.md, Compose `name: plantpal` + RAM/CPU-Deckel
+  (Pi teilt sich mit anderen Diensten), ARM64-Cross-Build via buildx/qemu verifiziert
+  (Image baut, Imports laufen), Restore-Prozedur dokumentiert (geprobt in Phase 3).
+- **Phase 5:** `3fbf230` — Capacitor-7-Gerüst (gebündelt, iPhone-only, Portrait,
+  Purpose-Strings de+en, Export-Compliance), VITE_API_BASE-Schalter, Apple-Review-Account
+  (fester Code, 5 Tests), IOS_SUBMISSION_CHECKLIST.md (inkl. Erste-Mac-Session +
+  Cookie/CORS-Entscheidung am echten WKWebView), ASSET_PROMPTS.md.
+- **Phase 6 (bisher):** Lighthouse 74→**80**/100/100 durch GZip-Middleware + Cache-TTLs
+  (Assets 1 J immutable, index no-cache) + Label-in-Name-Fix (alles getestet, 371 pytest).
+
 ## Nächste Schritte
 
-- Codex-Findings (läuft im Hintergrund) einarbeiten.
-- Phase 4: ARM64-Build, Compose-Ressourcen-Limits, .env.example, PI_RUNBOOK.md.
+- Session-Verify-Workflow auswerten, bestätigte Findings fixen.
+- JOURNEY_REPORT.md + gebündelte User-Delegation.
