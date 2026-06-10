@@ -82,7 +82,9 @@ export function ThirstySection({
               onClick={() => onSelect(p)}
               disabled={exit}
               className="flex min-w-0 flex-1 items-center gap-3 text-left"
-              aria-label={`${p.name} — ${statusText(p, t)}`}
+              // Exit rows must not keep announcing the stale overdue status (Codex P2-a11y):
+              // the accessible name follows the visible state ("Gegossen").
+              aria-label={`${p.name} — ${exit ? t("plant.watered") : statusText(p, t)}`}
             >
               <img
                 src={p.image_url ?? "/placeholder.png"}

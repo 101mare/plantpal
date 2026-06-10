@@ -313,12 +313,17 @@ export function PlantdexPage() {
   const searching = search.trim().length > 0;
   // Thirsty plants surface once, in the section above; the grid shows "the rest". While searching,
   // every match belongs in the results (thirsty included). Pending-delete cards always stay in the
-  // grid so their 5s undo window remains reachable.
+  // grid so their 5s undo window remains reachable. Mid ✓-glide rows (exiting) are still owned by
+  // the band — without this filter the just-watered plant would appear twice until the refetch
+  // (band exit row + grid card), since `thirsty` already excludes it (Codex P1).
   const gridPlants = useMemo(() => {
     if (searching) return visible;
     const thirstyIds = new Set(thirsty.map((p) => p.id));
-    return visible.filter((p) => pendingDelete.has(p.id) || !thirstyIds.has(p.id));
-  }, [visible, searching, thirsty, pendingDelete]);
+    const exitingIds = new Set(exitingPlants.map((p) => p.id));
+    return visible.filter(
+      (p) => pendingDelete.has(p.id) || (!thirstyIds.has(p.id) && !exitingIds.has(p.id)),
+    );
+  }, [visible, searching, thirsty, exitingPlants, pendingDelete]);
 
   return (
     <div className="mx-auto max-w-3xl p-4">

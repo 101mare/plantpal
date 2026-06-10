@@ -415,3 +415,21 @@ async def test_create_plant_with_empty_image_field(client, db, settings):
     )
     assert r.status_code == 201
     assert r.json()["image_url"] is None
+
+
+async def test_create_plant_nameless_image_part_with_content_rejected(client, db, settings):
+    """A nameless multipart part WITH content must never slip past the image pipeline as
+    a silent no-image create (Codex P2). Starlette parses such a part as a string form
+    field, so the UploadFile validation 422s it — pinned here; the size-guard in the
+    route stays as defense in depth for clients that do attach a filenameless file."""
+    csrf = await _login(client, db, settings)
+    before = len((await client.get("/api/plants")).json()["items"])
+    for payload, ctype in [(_png(), "image/png"), (b"definitely not an image", "text/plain")]:
+        r = await client.post(
+            "/api/plants",
+            data={"name": "Anonym", "interval_days": "5"},
+            files={"image": ("", payload, ctype)},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert r.status_code == 422  # rejected at the type boundary, not silently ignored
+    assert len((await client.get("/api/plants")).json()["items"]) == before  # no orphans

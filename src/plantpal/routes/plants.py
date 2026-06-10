@@ -51,8 +51,11 @@ async def create_plant(
     await check_rate_limit(db, key_user(user.id, "plant"), settings.RL_PLANT_MUTATION)
     # The photo is OPTIONAL (first plant in <30s — onboarding research B1): a plant without
     # an image renders the placeholder and the photo can be added later via the detail
-    # sheet. An empty multipart file part arrives as filename "" — treat it as absent.
-    has_image = image is not None and bool(image.filename)
+    # sheet. A browser's unused picker arrives as filename "" AND empty body — only that
+    # counts as absent. A nameless part WITH content is still an upload attempt and goes
+    # through the full pipeline (rate limit + validation), so the empty-filename trick
+    # can't skip the image limits while smuggling bytes (Codex P2).
+    has_image = image is not None and (bool(image.filename) or bool(image.size))
     if has_image:
         # Image creates must honor the (stricter) image-upload limit — otherwise create
         # would be a 30/m bypass of the 5/m CPU-heavy image pipeline (N5).
