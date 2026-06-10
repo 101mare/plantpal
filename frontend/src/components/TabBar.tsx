@@ -11,8 +11,8 @@ import { Spross } from "./Spross";
  * expects aria-controls + arrow-key roving, and would announce "tab" without a panel).
  *
  * The central tab renders the REAL Spross sprite (mood-mirrored, larger + raised on a pedestal). The
- * ➕ tab opens the persistent Add-Plant sheet via the AppShell context (NOT a window-event — the old
- * PlantdexPage listener is unmounted on /stats|/spross|/settings).
+ * add (+) tab opens the persistent Add-Plant sheet via the AppShell context (NOT a window-event — the
+ * old PlantdexPage listener is unmounted on /stats|/spross|/settings).
  */
 export function TabBar() {
   const { t } = useI18n();
@@ -39,9 +39,7 @@ export function TabBar() {
         aria-current={pathname === "/" ? "page" : undefined}
         className={`pp-tab ${pathname === "/" ? "pp-tab-active" : ""}`}
       >
-        <span aria-hidden="true" className="pp-tab-ico">
-          🪴
-        </span>
+        <img src="/sprites/tab-plantdex.png" alt="" aria-hidden="true" className="pp-tab-ico" />
       </Link>
       <Link
         to="/stats"
@@ -50,9 +48,7 @@ export function TabBar() {
         aria-current={pathname === "/stats" ? "page" : undefined}
         className={`pp-tab ${pathname === "/stats" ? "pp-tab-active" : ""}`}
       >
-        <span aria-hidden="true" className="pp-tab-ico">
-          📊
-        </span>
+        <img src="/sprites/tab-stats.png" alt="" aria-hidden="true" className="pp-tab-ico" />
       </Link>
       {/* Central, raised tab: the real mood-mirrored Spross sprite (identity), not a flat icon. */}
       <Link
@@ -82,9 +78,7 @@ export function TabBar() {
         aria-current={pathname === "/settings" ? "page" : undefined}
         className={`pp-tab ${pathname === "/settings" ? "pp-tab-active" : ""}`}
       >
-        <span aria-hidden="true" className="pp-tab-ico">
-          ⚙️
-        </span>
+        <img src="/sprites/tab-settings.png" alt="" aria-hidden="true" className="pp-tab-ico" />
       </Link>
       <button
         type="button"
@@ -94,7 +88,7 @@ export function TabBar() {
         onClick={openAdd}
       >
         <span aria-hidden="true" className="pp-tab-add-glyph">
-          +
+          <img src="/sprites/tab-add.png" alt="" className="pp-tab-add-icon" />
         </span>
       </button>
     </nav>

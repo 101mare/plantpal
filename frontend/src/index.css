@@ -431,8 +431,9 @@ select,
   -webkit-tap-highlight-color: transparent;
 }
 .pp-tab-ico {
-  font-size: 1.5rem;
-  line-height: 1;
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
   opacity: 0.6;
   transition: opacity 0.1s ease;
 }
@@ -441,6 +442,11 @@ select,
 }
 .pp-tab:active .pp-tab-ico {
   transform: translateY(1px);
+}
+/* Light theme: the cream icons would vanish on parchment → tint them dark. The opacity above then
+   reads iOS-style (grey when inactive, dark when active). */
+:root[data-theme="light"] .pp-tab-ico {
+  filter: brightness(0);
 }
 /* Active marker = a colour-independent gold bar above the icon (reads over any emoji). */
 .pp-tab-active::before {
@@ -499,13 +505,15 @@ select,
   align-items: center;
   justify-content: center;
   background: var(--color-pp-gold);
-  color: var(--color-pp-card-ink);
-  font-family: var(--font-pixel);
-  font-size: 1.1rem;
-  line-height: 1;
 }
-:root[data-theme="light"] .pp-tab-add-glyph {
-  color: #fff;
+.pp-tab-add-icon {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
+  filter: brightness(0); /* cream plus → dark ink on the gold disc (dark theme) */
+}
+:root[data-theme="light"] .pp-tab-add-icon {
+  filter: brightness(0) invert(1); /* white plus on the darker light-mode gold */
 }
 .pp-tab-add:active .pp-tab-add-glyph {
   transform: translateY(1px);
