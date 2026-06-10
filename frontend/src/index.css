@@ -119,28 +119,12 @@ img[alt="PlantPal"] {
   background-color: #0d2018;
   background-image: url("/backgrounds/vines.webp");
 }
-:root[data-theme="dark"][data-bg="vines-tiefsee"] body {
-  background-color: #08201c;
-  background-image: url("/backgrounds/vines.webp");
-}
-:root[data-theme="dark"][data-bg="vines-tanne"] body {
-  background-color: #0a1c14;
-  background-image: url("/backgrounds/vines.webp");
-}
-:root[data-theme="dark"][data-bg="vines-moos"] body {
-  background-color: #141f0c;
-  background-image: url("/backgrounds/vines.webp");
-}
 :root[data-theme="dark"][data-bg="vines-smaragd"] body {
   background-color: #214f3c;
   background-image: url("/backgrounds/vines.webp");
 }
 :root[data-theme="dark"][data-bg="vines-espresso"] body {
   background-color: #1d140d;
-  background-image: url("/backgrounds/vines.webp");
-}
-:root[data-theme="dark"][data-bg="vines-burgund"] body {
-  background-color: #200f14;
   background-image: url("/backgrounds/vines.webp");
 }
 

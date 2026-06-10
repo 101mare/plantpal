@@ -13,19 +13,14 @@ export function detectTheme(): Theme {
   return localStorage.getItem("pp_theme") === "light" ? "light" : "dark";
 }
 
-export const BACKGROUNDS: Background[] = [
-  "vines",
-  "vines-tiefsee",
-  "vines-tanne",
-  "vines-moos",
-  "vines-smaragd",
-  "vines-espresso",
-  "vines-burgund",
-  "none",
-];
+// Curated set (V2): forest default + one bright + one warm. The old tiefsee/tanne/moos/
+// burgund variants were near-duplicates of the default; fewer, more distinct choices.
+export const BACKGROUNDS: Background[] = ["vines", "vines-smaragd", "vines-espresso", "none"];
 
 export function detectBackground(): Background {
   const v = localStorage.getItem("pp_bg") ?? "";
+  // Legacy values from the 7-variant era fall back to the forest default (not "none" —
+  // those users HAD a vines wallpaper and should keep one).
   return (BACKGROUNDS as string[]).includes(v) ? (v as Background) : "vines";
 }
 

@@ -249,13 +249,11 @@ export function SettingsPage() {
                 value={background}
                 onChange={(e) => setBackground(e.target.value as Background)}
               >
+                {/* Curated trio (V2): forest default + one bright + one warm — the four dropped
+                    tones were near-duplicates; stored legacy values fall back to "vines". */}
                 <option value="vines">{t("settings.bg.vines")}</option>
-                <option value="vines-tiefsee">{t("settings.bg.tiefsee")}</option>
-                <option value="vines-tanne">{t("settings.bg.tanne")}</option>
-                <option value="vines-moos">{t("settings.bg.moos")}</option>
                 <option value="vines-smaragd">{t("settings.bg.smaragd")}</option>
                 <option value="vines-espresso">{t("settings.bg.espresso")}</option>
-                <option value="vines-burgund">{t("settings.bg.burgund")}</option>
                 <option value="none">{t("settings.bg.none")}</option>
               </select>
             </div>
