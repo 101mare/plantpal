@@ -37,7 +37,21 @@ export function plantStatus(p: Plant): StatusLevel {
 export function statusText(p: Plant, t: Translate): string {
   const level = plantStatus(p);
   if (level === "due" || level === "overdue") {
+    if (p.days_overdue === 1) return t("plant.overdueOne"); // "1 Tag", nicht "1 Tage"
     return p.days_overdue >= 1 ? t("plant.overdue", { n: p.days_overdue }) : t("status.dueToday");
+  }
+  return t(level === "soon" ? "status.soon" : "status.ok");
+}
+
+/** Compact glance label for band rows + card badges: a number or one word, never a sentence
+ *  ("heute" | "2d über"). Fixed vocabulary at a fixed slot; the long statusText stays for
+ *  aria-labels. The "d" unit is a deliberate cross-language convention (de+en). */
+export function statusShort(p: Plant, t: Translate): string {
+  const level = plantStatus(p);
+  if (level === "due" || level === "overdue") {
+    return p.days_overdue >= 1
+      ? t("status.overShort", { n: p.days_overdue })
+      : t("status.todayShort");
   }
   return t(level === "soon" ? "status.soon" : "status.ok");
 }

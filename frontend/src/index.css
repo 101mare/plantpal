@@ -248,6 +248,25 @@ img[alt="PlantPal"] {
   filter: saturate(0.45) brightness(0.92) !important;
 }
 
+/* Just-watered band row: hold the ✓ briefly, then a quiet fade-out (no toast — success is
+   silent). The global prefers-reduced-motion rule collapses the duration, so the row simply
+   disappears for those users; the removal itself is announce()d either way. */
+@keyframes pp-row-exit {
+  0%,
+  45% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+.pp-row-exit {
+  animation: pp-row-exit 0.9s ease forwards;
+  pointer-events: none;
+}
+
 /* Chunky retro borders */
 .pp-frame {
   border: 3px solid var(--color-pp-border);
@@ -282,6 +301,13 @@ img[alt="PlantPal"] {
 .pp-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+/* Compact variant for inline row actions (band rows): trims horizontal padding so the
+   plant NAME keeps the width budget on a 390px phone. Unlayered like .pp-btn, so a
+   Tailwind px-* utility could not override it — this modifier is the supported knob. */
+.pp-btn--compact {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
 }
 /* (Removed dead .pp-btn-primary — the single gold CTA is now the ➕ tab in the TabBar.) */
 

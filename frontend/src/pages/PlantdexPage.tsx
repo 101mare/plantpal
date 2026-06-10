@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant, Stats } from "../types";
 import { PlantCard } from "../components/PlantCard";
+import { PixelIcon } from "../components/PixelIcon";
 import { ThirstySection } from "../components/ThirstySection";
 import { PlantDetailModal } from "../components/PlantDetailModal";
 import { ErrorState, InlineError, announce } from "../components/Feedback";
@@ -42,6 +43,10 @@ export function PlantdexPage() {
   const { openAdd, setSpross } = useAppShell();
   const [selected, setSelected] = useState<Plant | null>(null);
   const [wateringId, setWateringId] = useState<number | null>(null);
+  // Just-watered plants (object captured pre-water): the band keeps them for ~1s as a quiet
+  // ✓-morph that glides out, instead of the row vanishing on the refetch frame.
+  const [exitingPlants, setExitingPlants] = useState<Plant[]>([]);
+  const exitTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<Sort>("thirsty");
   const [pendingDelete, setPendingDelete] = useState<Set<number>>(new Set());
@@ -64,12 +69,15 @@ export function PlantdexPage() {
   // Ids whose real DELETE already started (timer fired) — undo can no longer cancel these.
   const committingRef = useRef<Set<number>>(new Set());
 
-  // Clear pending delete timers on unmount so a delayed delete can't fire after we leave.
+  // Clear pending delete + row-exit timers on unmount so they can't fire after we leave.
   useEffect(() => {
     const timers = deleteTimers.current;
+    const exits = exitTimers.current;
     return () => {
       timers.forEach((tid) => clearTimeout(tid));
       timers.clear();
+      exits.forEach((tid) => clearTimeout(tid));
+      exits.clear();
     };
   }, []);
 
@@ -160,7 +168,18 @@ export function PlantdexPage() {
       setWateringId(id);
     },
     onSettled: () => setWateringId(null),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      // Capture the pre-water row so the band can morph it to a ✓ and glide it out quietly
+      // (the refetch below would otherwise pop it off on the next frame).
+      const justWatered = (plants ?? []).find((p) => p.id === id);
+      if (justWatered && justWatered.is_thirsty) {
+        setExitingPlants((prev) => [...prev.filter((p) => p.id !== id), justWatered]);
+        const tid = setTimeout(() => {
+          exitTimers.current.delete(id);
+          setExitingPlants((prev) => prev.filter((p) => p.id !== id));
+        }, 1000);
+        exitTimers.current.set(id, tid);
+      }
       qc.invalidateQueries({ queryKey: ["plants"] });
       qc.invalidateQueries({ queryKey: ["stats"] });
       // The card silently drops out of the thirsty list; announce it for screen readers.
@@ -220,7 +239,11 @@ export function PlantdexPage() {
     () => (plants ?? []).filter((p) => !pendingDelete.has(p.id)),
     [plants, pendingDelete],
   );
-  const thirsty = livePlants.filter((p) => p.is_thirsty);
+  // Exclude rows mid ✓-glide-out: between water-success and the refetch the plant is still
+  // is_thirsty in the cache and would render twice (live + exiting).
+  const thirsty = livePlants.filter(
+    (p) => p.is_thirsty && !exitingPlants.some((x) => x.id === p.id),
+  );
 
   // Spross's mood = collective health, from live plants (NOT stats.thirsty_count, so a plant in its
   // 5s undo window can't skew it) + the consistency_pct from the shared ['stats'] cache.
@@ -325,50 +348,53 @@ export function PlantdexPage() {
           <InlineError error={actionError} className="mb-3 text-center pp-halo" />
 
           {/* The Spross mood-band moved into the persistent TabBar's central tab (the live mirror is
-              pushed from the sync effect above). The thirsty count/labels below still carry the state
-              for screen readers, so nothing is lost from the accessibility tree. */}
-          {/* Thirsty plants appear ONCE here (with a Water button). While searching, the grid below
-              carries every match instead, so this status section steps aside. */}
+              pushed from the sync effect above). The band below answers the daily question with a
+              number-first header — and explicitly answers "nobody" with a calm all-watered line
+              instead of vanishing. While searching, the grid carries every match instead. */}
           {!searching && (
             <ThirstySection
               plants={thirsty}
+              exiting={exitingPlants}
               onWater={water.mutate}
               wateringId={wateringId}
               onSelect={setSelected}
             />
           )}
 
-          {/* Search + sort share one row; the "thirsty only" filter was dropped — thirsty plants
-              already surface in the section above, so it was redundant. The mt-8 collapses with the
-              preceding margin to a consistent ~32px break, chunking "status above" from "catalog below". */}
-          <div className="mt-8 mb-3 flex items-center gap-2">
-            <input
-              className="pp-input min-w-0 flex-1"
-              placeholder={t("list.search")}
-              aria-label={t("list.search")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {/* width:auto inline — .pp-input sets width:100%, which beats a `w-auto` class in the
-                cascade and would collapse the search field. Inline style wins, keeping the select
-                at content width so the search field can take the rest of the row. */}
-            <select
-              className="pp-input shrink-0"
-              style={{ width: "auto" }}
-              value={sort}
-              onChange={(e) => setSort(e.target.value as Sort)}
-            >
-              <option value="thirsty">{t("list.sort.thirsty")}</option>
-              <option value="name">{t("list.sort.name")}</option>
-              <option value="recent">{t("list.sort.recent")}</option>
-            </select>
-          </div>
-
           {/* Catalog zone. Hidden entirely when there's nothing left to show and we're not searching
               (no orphan heading, no false "no results"); the "no results" box appears only on a search. */}
           {(gridPlants.length > 0 || searching) && (
             <>
-              <h2 className="pp-heading mb-3 text-sm">{t("nav.plantdex")}</h2>
+              <h2 className="pp-heading mt-8 mb-3 text-sm">{t("nav.plantdex")}</h2>
+
+              {/* Search + sort are library tools, not daily tools: they live with the catalog
+                  (under its heading) and only appear once the collection is big enough to need
+                  them (≥6) — below that they'd be louder than the content they filter. */}
+              {(livePlants.length >= 6 || searching) && (
+                <div className="mb-3 flex items-center gap-2">
+                  <input
+                    className="pp-input min-w-0 flex-1"
+                    placeholder={t("list.search")}
+                    aria-label={t("list.search")}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  {/* width:auto inline — .pp-input sets width:100%, which beats a `w-auto` class in
+                      the cascade and would collapse the search field. Inline style wins, keeping the
+                      select at content width so the search field can take the rest of the row. */}
+                  <select
+                    className="pp-input shrink-0"
+                    style={{ width: "auto" }}
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as Sort)}
+                  >
+                    <option value="thirsty">{t("list.sort.thirsty")}</option>
+                    <option value="name">{t("list.sort.name")}</option>
+                    <option value="recent">{t("list.sort.recent")}</option>
+                  </select>
+                </div>
+              )}
+
               {gridPlants.length === 0 ? (
                 searching ? (
                   <div className="pp-frame p-6 text-center text-sm">
@@ -413,7 +439,8 @@ function UndoCard({ name, onUndo }: { name: string; onUndo: () => void }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border-2 border-dashed border-pp-border bg-pp-panel-2 p-2 text-xs">
       <span className="min-w-0 flex-1 truncate opacity-80">
-        <span aria-hidden="true">🗑</span> {t("plant.deletedName", { name })}
+        <PixelIcon name="trash" size={11} className="mr-1 inline" />
+        {t("plant.deletedName", { name })}
       </span>
       <button
         type="button"

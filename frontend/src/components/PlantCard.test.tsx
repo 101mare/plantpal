@@ -33,9 +33,12 @@ describe("PlantCard", () => {
     expect(screen.queryByText(/7/)).toBeNull();
   });
 
-  it("shows the overdue-day badge when thirsty", () => {
+  it("shows the overdue badge AND the short status text when thirsty", () => {
     renderCard({ ...base, is_thirsty: true, days_overdue: 5 });
-    expect(screen.getByText(/5d/)).toBeInTheDocument();
+    // Corner badge ("5d") + visible short status ("5d über") both carry the number —
+    // colour is never the only channel (WCAG 1.4.1).
+    expect(screen.getAllByText(/5d/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("5d over")).toBeInTheDocument(); // en default in tests
   });
 
   it("shows no overdue badge when healthy", () => {
