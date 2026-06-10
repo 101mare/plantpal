@@ -17,12 +17,9 @@ export function LangThemeBar() {
         >
           {locale === "de" ? "EN" : "DE"}
         </button>
-        <button
-          type="button"
-          className="pp-tap px-3 underline"
-          onClick={toggle}
-          aria-label={theme === "dark" ? t("settings.theme.light") : t("settings.theme.dark")}
-        >
+        {/* No aria-label: the visible text IS the accessible name (WCAG 2.5.3 label-in-name —
+            a localized aria-label like "Hell" mismatched the visible "Light"). */}
+        <button type="button" className="pp-tap px-3 underline" onClick={toggle}>
           {theme === "dark" ? "Light" : "Dark"}
         </button>
       </div>

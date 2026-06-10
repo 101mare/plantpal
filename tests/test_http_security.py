@@ -107,3 +107,12 @@ async def test_hsts_only_in_production(tmp_path):
             assert r.headers["strict-transport-security"] == "max-age=63072000; includeSubDomains"
     finally:
         await db.close()
+
+
+async def test_responses_are_gzip_compressed(client):
+    """The SPA bundle is ~290KB raw — the Pi must serve it compressed (GZipMiddleware)."""
+    r = await client.get("/api/health", headers={"accept-encoding": "gzip"})
+    # small JSON stays uncompressed (below minimum_size) — but a large body compresses:
+    big = await client.get("/openapi.json", headers={"accept-encoding": "gzip"})
+    assert big.headers.get("content-encoding") == "gzip"
+    assert r.status_code == 200

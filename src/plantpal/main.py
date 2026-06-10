@@ -249,6 +249,14 @@ def create_app(settings: Settings | None = None, db: aiosqlite.Connection | None
         )
         return response
 
+    # Response compression: the SPA bundle is ~290KB raw / ~90KB gzipped — without this the
+    # Pi serves it uncompressed on every cold load (Lighthouse: uses-text-compression).
+    # Innermost of the pure-ASGI stack; images/webp are already compressed and stay below
+    # the minimum_size threshold or gain nothing (gzip skips by content-encoding).
+    from starlette.middleware.gzip import GZipMiddleware
+
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+
     # Pure-ASGI guards, added last so they wrap the BaseHTTPMiddleware layers above.
     # add_middleware inserts at position 0, so SecurityHeaders ends up outermost and
     # decorates even the 413 that BodySizeLimit short-circuits.
