@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import { InlineError, announce } from "./Feedback";
+import { PixelIcon } from "./PixelIcon";
 
 // Accept only what the server accepts (N27): the picker shouldn't offer HEIC/GIF/SVG that the
 // backend then rejects with a 415 after a full upload. MAX_IMAGE_MB mirrors IMG_MAX_UPLOAD_MB.
@@ -22,6 +23,10 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [photoErr, setPhotoErr] = useState<string | null>(null);
+  // Progressive disclosure (B2): room/notes/water amount stay folded — the fast path to
+  // plant #1 is name + interval (+ optional photo). One-way reveal; a one-shot form
+  // doesn't need a re-collapse toggle.
+  const [more, setMore] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const mutation = useMutation({
@@ -32,7 +37,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
       if (notes) form.set("notes", notes);
       if (waterMl) form.set("water_amount_ml", waterMl);
       if (room.trim()) form.set("location_room", room.trim());
-      form.set("image", file!);
+      if (file) form.set("image", file); // photo is optional (B1) — server renders placeholder
       return api.createPlant(form);
     },
     onSuccess: () => {
@@ -73,19 +78,38 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) {
-      setPhotoErr(t("plant.photoRequired")); // inline field error instead of a one-word toast (UX-04)
-      return;
-    }
-    mutation.mutate();
+    mutation.mutate(); // photo optional (B1): name is the only required field
   }
 
   return (
     <Backdrop onClose={onClose} label={t("nav.add")} dismissOnBackdrop={false}>
       <h2 className="pp-heading mb-4 text-sm">{t("nav.add")}</h2>
       <form className="flex flex-col gap-3" onSubmit={submit}>
+        {/* Fast path first (B2): the only required field leads, the focus trap lands on it,
+            and plant #1 is name + Save. Photo and details are optional extras below. */}
+        <Field label={`${t("plant.name")} *`}>
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="pp-input"
+          />
+        </Field>
+        <Field label={t("plant.interval")}>
+          <input
+            type="number"
+            min={1}
+            max={365}
+            inputMode="numeric"
+            value={interval}
+            onChange={(e) => setIntervalDays(Number(e.target.value))}
+            className="pp-input"
+          />
+        </Field>
         <div className="flex flex-col items-center gap-2 text-xs">
-          <span className="pp-heading text-[10px]">{t("plant.photo")} *</span>
+          <span className="pp-heading text-[10px]">
+            {t("plant.photo")} <span className="lowercase opacity-60">({t("plant.optional")})</span>
+          </span>
           {/* The picker is a hidden <input> triggered by tappable controls (>=44pt). A bare
               <input type="file"> renders a sub-44pt native button on iOS (touch/A11Y). */}
           <button
@@ -105,11 +129,11 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
             ) : (
               <div
                 aria-hidden="true"
-                className={`flex h-24 w-24 items-center justify-center rounded border-2 border-dashed text-2xl ${
+                className={`flex h-24 w-24 items-center justify-center rounded border-2 border-dashed ${
                   photoErr ? "border-pp-danger" : "border-pp-border"
                 }`}
               >
-                📷
+                <PixelIcon name="camera" size={28} className="opacity-60" />
               </div>
             )}
           </button>
@@ -134,47 +158,47 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
             </span>
           )}
         </div>
-        <Field label={`${t("plant.name")} *`}>
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="pp-input"
-          />
-        </Field>
-        <Field label={t("plant.interval")}>
-          <input
-            type="number"
-            min={1}
-            max={365}
-            inputMode="numeric"
-            value={interval}
-            onChange={(e) => setIntervalDays(Number(e.target.value))}
-            className="pp-input"
-          />
-        </Field>
-        <Field label={t("plant.room")}>
-          <input
-            value={room}
-            maxLength={80}
-            onChange={(e) => setRoom(e.target.value)}
-            className="pp-input"
-          />
-        </Field>
-        <Field label={t("plant.notes")}>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="pp-input" />
-        </Field>
-        <Field label={t("plant.amount")}>
-          <input
-            type="number"
-            min={0}
-            step={10}
-            inputMode="numeric"
-            value={waterMl}
-            onChange={(e) => setWaterMl(e.target.value)}
-            className="pp-input"
-          />
-        </Field>
+        {/* Progressive disclosure: room/notes/amount are set-and-forget metadata — folded so
+            the first-run form is 2 fields + photo. One-way reveal (no re-collapse). */}
+        {!more ? (
+          <button
+            type="button"
+            className="pp-tap self-center text-[11px] underline opacity-80"
+            aria-expanded={false}
+            onClick={() => setMore(true)}
+          >
+            {t("plant.moreDetails")}
+          </button>
+        ) : (
+          <>
+            <Field label={t("plant.room")}>
+              <input
+                value={room}
+                maxLength={80}
+                onChange={(e) => setRoom(e.target.value)}
+                className="pp-input"
+              />
+            </Field>
+            <Field label={t("plant.notes")}>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="pp-input"
+              />
+            </Field>
+            <Field label={t("plant.amount")}>
+              <input
+                type="number"
+                min={0}
+                step={10}
+                inputMode="numeric"
+                value={waterMl}
+                onChange={(e) => setWaterMl(e.target.value)}
+                className="pp-input"
+              />
+            </Field>
+          </>
+        )}
         <InlineError error={mutation.error} />
         {/* Sticky action row: with the keyboard open on a small phone the 6-field form scrolls, so the
             primary CTA (Save) stays pinned + reachable instead of below the scroll boundary (UX). */}

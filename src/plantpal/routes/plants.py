@@ -42,16 +42,21 @@ async def create_plant(
     notes: str | None = Form(None),
     water_amount_ml: int | None = Form(None),
     location_room: str | None = Form(None),
-    image: UploadFile = File(...),
+    image: UploadFile | None = File(None),
     user=Depends(current_user),
     _csrf=Depends(require_csrf),
     db=Depends(get_db),
     settings=Depends(settings_dep),
 ):
     await check_rate_limit(db, key_user(user.id, "plant"), settings.RL_PLANT_MUTATION)
-    # create always processes an image, so it must also honor the (stricter) image-upload
-    # limit — otherwise it's a 30/m bypass of the 5/m CPU-heavy image pipeline (N5).
-    await check_rate_limit(db, key_user(user.id, "image"), settings.RL_IMAGE_UPLOAD)
+    # The photo is OPTIONAL (first plant in <30s — onboarding research B1): a plant without
+    # an image renders the placeholder and the photo can be added later via the detail
+    # sheet. An empty multipart file part arrives as filename "" — treat it as absent.
+    has_image = image is not None and bool(image.filename)
+    if has_image:
+        # Image creates must honor the (stricter) image-upload limit — otherwise create
+        # would be a 30/m bypass of the 5/m CPU-heavy image pipeline (N5).
+        await check_rate_limit(db, key_user(user.id, "image"), settings.RL_IMAGE_UPLOAD)
     data = PlantCreate(
         name=name,
         interval_days=interval_days,
@@ -60,14 +65,17 @@ async def create_plant(
         location_room=location_room,
     )
     pid = await plant_service.create_plant(db, user.id, data)
-    try:
-        raw = await image_service.read_upload_limited(image, settings)
-        path = await image_service.process_upload(settings, user.id, pid, raw, image.content_type)
-    except AppError:
-        # roll back the just-created row so a failed upload leaves no orphan plant
-        await plant_service.hard_delete_plant(db, user.id, pid)
-        raise
-    await plant_service.set_image_path(db, user.id, pid, path)
+    if has_image:
+        try:
+            raw = await image_service.read_upload_limited(image, settings)
+            path = await image_service.process_upload(
+                settings, user.id, pid, raw, image.content_type
+            )
+        except AppError:
+            # roll back the just-created row so a failed upload leaves no orphan plant
+            await plant_service.hard_delete_plant(db, user.id, pid)
+            raise
+        await plant_service.set_image_path(db, user.id, pid, path)
     row = await plant_service.get_plant(db, user.id, pid)
     return plant_service.to_response(row).model_dump()
 

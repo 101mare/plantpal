@@ -375,3 +375,43 @@ async def test_register_with_invite_flow(client, db, settings):
     r = await client.post("/auth/register", json={"invite_token": token, "email": "new@b.c"})
     assert r.status_code == 200
     assert await auth_service.get_user_by_email(db, "new@b.c") is not None
+
+
+async def test_create_plant_without_image(client, db, settings):
+    """The photo is optional (onboarding: first plant in <30s) — a plant created without
+    an image gets image_url=None (the frontend renders the placeholder) and does NOT
+    consume the stricter image-upload rate limit."""
+    csrf = await _login(client, db, settings)
+    r = await client.post(
+        "/api/plants",
+        data={"name": "Ohne Foto", "interval_days": "7"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["image_url"] is None
+    # the image endpoint 404s instead of serving a phantom file
+    assert (await client.get(f"/api/plants/{body['id']}/image")).status_code == 404
+    # photo can be added later via the existing upload endpoint
+    r = await client.post(
+        f"/api/plants/{body['id']}/image",
+        files={"image": ("p.png", _png(), "image/png")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 200
+    r = await client.get("/api/plants")
+    assert r.json()["items"][0]["image_url"] == f"/api/plants/{body['id']}/image"
+
+
+async def test_create_plant_with_empty_image_field(client, db, settings):
+    """Browsers submit an empty file part (filename "") when the picker stays unused —
+    must behave exactly like 'no image', not crash the pipeline."""
+    csrf = await _login(client, db, settings)
+    r = await client.post(
+        "/api/plants",
+        data={"name": "Leeres Feld", "interval_days": "3"},
+        files={"image": ("", b"", "application/octet-stream")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 201
+    assert r.json()["image_url"] is None
