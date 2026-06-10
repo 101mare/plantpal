@@ -23,15 +23,15 @@ export function LangThemeBar() {
           onClick={toggle}
           aria-label={theme === "dark" ? t("settings.theme.light") : t("settings.theme.dark")}
         >
-          {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+          {theme === "dark" ? "Light" : "Dark"}
         </button>
       </div>
       <div className="flex gap-4 opacity-60">
         <Link to="/impressum" className="pp-tap px-2">
-          Impressum
+          {t("legal.imprint")}
         </Link>
         <Link to="/datenschutz" className="pp-tap px-2">
-          Datenschutz
+          {t("legal.privacy")}
         </Link>
       </div>
     </div>

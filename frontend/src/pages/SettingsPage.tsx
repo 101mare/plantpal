@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { codeMessage, useI18n } from "../i18n";
@@ -383,6 +383,22 @@ export function SettingsPage() {
               </button>
             </Section>
           </div>
+
+          {/* Legal footer — signed-in users previously had NO path to Impressum/Datenschutz
+              (only the logged-out LangThemeBar linked them): Apple 5.1.1(i) requires the privacy
+              policy "easily accessible in-app", §5 DDG wants the Impressum ≤2 taps away. */}
+          <nav
+            aria-label={t("legal.navLabel")}
+            className="mt-6 flex items-center justify-center gap-1 text-[11px] opacity-80"
+          >
+            <Link to="/impressum" className="pp-tap px-2 underline">
+              {t("legal.imprint")}
+            </Link>
+            <span aria-hidden="true">·</span>
+            <Link to="/datenschutz" className="pp-tap px-2 underline">
+              {t("legal.privacy")}
+            </Link>
+          </nav>
 
           {confirmDel && (
             <Backdrop
