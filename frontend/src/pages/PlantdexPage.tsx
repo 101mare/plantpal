@@ -355,6 +355,10 @@ export function PlantdexPage() {
             <ThirstySection
               plants={thirsty}
               exiting={exitingPlants}
+              freshCollection={
+                livePlants.length > 0 &&
+                livePlants.every((p) => (daysSince(p.created_at) ?? 1) === 0)
+              }
               onWater={water.mutate}
               wateringId={wateringId}
               onSelect={setSelected}

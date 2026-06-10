@@ -13,6 +13,7 @@ import { PixelIcon } from "./PixelIcon";
 export function ThirstySection({
   plants,
   exiting,
+  freshCollection,
   onWater,
   wateringId,
   onSelect,
@@ -20,6 +21,10 @@ export function ThirstySection({
   plants: Plant[];
   /** Just-watered plants (captured pre-water), shown briefly with a ✓ while gliding out. */
   exiting: Plant[];
+  /** Every plant was added today: day-1 of the ritual. The band then sets the expectation
+   *  ("tomorrow you'll see who's thirsty") instead of a trivially-true "all watered" —
+   *  empty-state-as-onboarding (B3), self-removing from day 2 on. */
+  freshCollection: boolean;
   onWater: (id: number) => void;
   wateringId: number | null;
   onSelect: (p: Plant) => void;
@@ -27,7 +32,12 @@ export function ThirstySection({
   const { t } = useI18n();
 
   if (plants.length === 0 && exiting.length === 0) {
-    return (
+    return freshCollection ? (
+      <div className="pp-frame mb-6 flex items-center gap-2 px-4 py-3">
+        <PixelIcon name="drop" size={14} className="shrink-0 text-pp-gold" />
+        <span className="text-xs opacity-80">{t("thirsty.firstDay")}</span>
+      </div>
+    ) : (
       <div className="pp-frame mb-6 flex items-center gap-2 px-4 py-3">
         <PixelIcon name="check" size={14} className="shrink-0 text-pp-border" />
         <span className="text-xs opacity-80">{t("thirsty.allDone")}</span>
