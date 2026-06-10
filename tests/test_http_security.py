@@ -73,7 +73,10 @@ async def test_security_headers_present(client):
     r = await client.get("/api/health")
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-frame-options"] == "DENY"
-    assert r.headers["referrer-policy"] == "no-referrer"
+    # same-origin (NOT no-referrer): no-referrer makes browsers null/omit the Origin header
+    # on same-origin POSTs, which broke the magic-link interstitial + code login in real
+    # browsers while httpx-based tests (explicit Origin) stayed green.
+    assert r.headers["referrer-policy"] == "same-origin"
     assert "geolocation=()" in r.headers["permissions-policy"]
     csp = r.headers["content-security-policy"]
     assert "default-src 'self'" in csp

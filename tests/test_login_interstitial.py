@@ -59,3 +59,14 @@ async def test_get_invalid_token_redirects_to_login(client, db, settings):
     r = await client.get("/auth/verify?token=bogus-token", follow_redirects=False)
     assert r.status_code == 303
     assert "/login?error=invalid_token" in r.headers["location"]
+
+
+async def test_post_with_null_origin_rejected(client, db, settings):
+    """`Origin: null` (sandboxed iframe / data: URL — and, before the same-origin
+    referrer-policy fix, every real browser under no-referrer) must NOT log in: null is
+    exactly what a sandboxed cross-site attacker page sends, so it stays rejected and the
+    fix for real browsers is the response header policy, never accepting null here."""
+    raw = await _issue_link(db, settings, "nullorigin@example.de")
+    r = await client.post("/auth/verify", data={"token": raw}, headers={"origin": "null"})
+    assert r.status_code == 403
+    assert (await client.get("/api/me")).status_code == 401

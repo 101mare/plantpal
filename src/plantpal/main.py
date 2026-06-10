@@ -123,7 +123,12 @@ class SecurityHeadersMiddleware:
         self._headers: list[tuple[bytes, bytes]] = [
             (b"x-content-type-options", b"nosniff"),
             (b"x-frame-options", b"DENY"),
-            (b"referrer-policy", b"no-referrer"),
+            # NOT no-referrer: per the Fetch spec, browsers serialize the Origin header of
+            # same-origin non-CORS POSTs to "null" (or omit it) under that policy, which made
+            # require_same_origin_submit reject every REAL browser's magic-link interstitial
+            # and code login (httpx tests set Origin explicitly, so they kept passing).
+            # same-origin still leaks nothing cross-site, incl. ?token= URLs.
+            (b"referrer-policy", b"same-origin"),
             (b"permissions-policy", b"geolocation=(), microphone=(), camera=()"),
             (b"content-security-policy", _CSP.encode()),
         ]
