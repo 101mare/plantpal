@@ -489,29 +489,6 @@ select,
     0 0 0 4px color-mix(in srgb, var(--color-pp-gold) 50%, transparent),
     0 0 0 9px color-mix(in srgb, var(--color-pp-gold) 22%, transparent);
 }
-/* Occasional self-hop. Rests at translateY(0) at 0%/100%, so the reduced-motion block above freezes
-   it automatically (second guard beside the JS matchMedia check), like spross-bloom/rise/wiggle. */
-@keyframes spross-tab-hop {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  20% {
-    transform: translateY(-22%);
-  }
-  40% {
-    transform: translateY(0);
-  }
-  55% {
-    transform: translateY(-10%);
-  }
-  70% {
-    transform: translateY(0);
-  }
-}
-.spross-tab-hop {
-  animation: spross-tab-hop 0.7s ease-in-out 1;
-}
 /* The ➕ tab: a solid gold disc (FILL) — the one action; the medallion is a gold RING (identity), so
    the two gold accents don't compete (outline vs fill + size + elevation). */
 .pp-tab-add-glyph {
