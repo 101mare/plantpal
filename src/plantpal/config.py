@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     RESEND_RATE_PER_SEC: float = 5.0
     RESEND_MAX_RETRIES: int = 3
 
+    # Apple App Review: designated account + fixed login code (Guideline 2.1). Both must
+    # be set for the path to exist; leave empty everywhere except while a review runs.
+    REVIEW_ACCOUNT_EMAIL: str = ""
+    REVIEW_LOGIN_CODE: str = ""
+
     # Rate limits "<count>/<window>" where window in s|m|h
     RL_LOGIN_REQUEST_EMAIL: str = "3/h"
     RL_LOGIN_REQUEST_IP: str = "10/h"

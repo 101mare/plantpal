@@ -40,6 +40,11 @@ async function toError(resp: Response): Promise<ApiError> {
 
 type Method = "GET" | "POST" | "PATCH" | "DELETE";
 
+/** API origin override for the Capacitor build: the bundled app runs on capacitor://localhost,
+ *  so relative /api paths must point at the hosted backend (VITE_API_BASE=https://getplantpal.com
+ *  at build time). Empty in the web build → same-origin paths, exactly as before. */
+const API_BASE: string = import.meta.env.VITE_API_BASE ?? "";
+
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   if (method !== "GET") headers["X-CSRF-Token"] = readCookie("plantpal_csrf");
@@ -52,7 +57,12 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
     payload = JSON.stringify(body);
   }
 
-  const resp = await fetch(path, { method, headers, body: payload, credentials: "include" });
+  const resp = await fetch(API_BASE + path, {
+    method,
+    headers,
+    body: payload,
+    credentials: "include",
+  });
   if (!resp.ok) throw await toError(resp);
   if (resp.status === 204) return undefined as T;
   const text = await resp.text();

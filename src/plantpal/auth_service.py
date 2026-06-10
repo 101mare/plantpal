@@ -416,6 +416,31 @@ async def verify_login_code(
     """
     email = normalize_email(email)
     now = now_berlin()
+
+    # Apple App Review (Guideline 2.1): reviewers have no inbox access, so ONE designated
+    # account may sign in with a FIXED, non-expiring code from the Review Notes. Active only
+    # when BOTH config values are set; the account must exist (CLI-provisioned) and be
+    # active. Route-level rate limits still apply; a wrong code falls through to the normal
+    # token flow (and fails generically), so this path leaks nothing about the account.
+    if (
+        settings.REVIEW_ACCOUNT_EMAIL
+        and settings.REVIEW_LOGIN_CODE
+        and email == normalize_email(settings.REVIEW_ACCOUNT_EMAIL)
+        and constant_time_equal(
+            hash_token(code, settings), hash_token(settings.REVIEW_LOGIN_CODE, settings)
+        )
+    ):
+        user = await get_user_by_email(db, email)
+        if user is not None and user["status"] == "active":
+            raw_session = await _insert_session(db, settings, user["id"])
+            await db.execute(
+                "UPDATE users SET last_login_at = ? WHERE id = ?", (to_iso(now), user["id"])
+            )
+            await db.commit()
+            return raw_session, SessionUser(
+                id=user["id"], email=user["email"], is_admin=bool(user["is_admin"])
+            )
+
     code_hash = hash_token(code, settings)
     await db.execute("BEGIN IMMEDIATE")
     try:
