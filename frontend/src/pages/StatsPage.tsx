@@ -3,9 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import { ErrorState } from "../components/Feedback";
+import { PixelIcon } from "../components/PixelIcon";
 
 export function StatsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const qc = useQueryClient();
   const { data, isLoading, isError } = useQuery({ queryKey: ["stats"], queryFn: api.getStats });
 
@@ -23,9 +24,7 @@ export function StatsPage() {
         <ErrorState onRetry={() => qc.invalidateQueries({ queryKey: ["stats"] })} />
       ) : !data || data.total_plants === 0 ? (
         <div className="pp-frame p-8 text-center text-sm">
-          <div className="mb-3 text-4xl" aria-hidden="true">
-            📊
-          </div>
+          <PixelIcon name="bars" size={36} className="mx-auto mb-3 text-pp-gold opacity-80" />
           <p className="pp-heading mb-2 text-sm">{t("stats.empty.title")}</p>
           <p className="mb-4 opacity-70">{t("stats.empty.hint")}</p>
           <Link to="/" className="pp-btn">
@@ -36,8 +35,21 @@ export function StatsPage() {
         <div className="grid grid-cols-2 gap-3">
           <Stat label={t("stats.totalPlants")} value={String(data.total_plants)} />
           <Stat label={t("stats.thirsty")} value={String(data.thirsty_count)} />
-          <Stat label={t("stats.streak")} value={String(data.watering_streak_days)} />
+          {/* Ratcheted peak instead of the live streak: a "Streak: 0" tile is a daily guilt
+              signal (mirror, not judge) — the Bestwert only ever climbs, like Spross itself. */}
+          <Stat label={t("stats.peakVitality")} value={String(data.peak_vitality)} />
           <Stat label={t("stats.consistency")} value={`${data.watering_consistency_pct}%`} />
+          <div className="col-span-2">
+            <Stat
+              detail
+              label={t("stats.avgInterval")}
+              value={
+                data.avg_configured_interval_days != null
+                  ? `${data.avg_configured_interval_days.toLocaleString(locale)} ${t("unit.days")}`
+                  : t("stats.none")
+              }
+            />
+          </div>
           <div className="col-span-2">
             <Stat
               detail

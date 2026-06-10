@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useI18n } from "../i18n";
 import { useAppShell } from "../appShell";
 import { ErrorState } from "../components/Feedback";
+import { PixelIcon } from "../components/PixelIcon";
 import { Spross } from "../components/Spross";
 import { growthFraction, berlinToday, STAGE_THRESHOLDS, type Stage } from "../status";
 import {
@@ -201,9 +202,11 @@ export function SprossPage() {
                           : "border-dashed border-pp-border opacity-50"
                       }`}
                     >
-                      <span className="text-lg" aria-hidden="true">
-                        {unlocked ? "🏆" : "🔒"}
-                      </span>
+                      <PixelIcon
+                        name={unlocked ? "trophy" : "lock"}
+                        size={18}
+                        className={unlocked ? "text-pp-gold" : "opacity-60"}
+                      />
                       {/* Always name the goal (grey/dashed when locked) so it reads as a target to pull
                           toward, not a wall of mystery boxes. Long German names wrap (min-w-0);
                           sr-only keeps the "locked" state for VoiceOver. */}

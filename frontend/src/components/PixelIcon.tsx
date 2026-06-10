@@ -67,6 +67,16 @@ const GRIDS = {
     "..XXXX..",
     ".XXXXXX.",
   ],
+  bars: [
+    "......XX",
+    "......XX",
+    "...XX.XX",
+    "...XX.XX",
+    "XX.XX.XX",
+    "XX.XX.XX",
+    "XX.XX.XX",
+    "XX.XX.XX",
+  ],
 } as const;
 
 export type PixelIconName = keyof typeof GRIDS;
