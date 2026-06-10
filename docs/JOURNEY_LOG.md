@@ -16,7 +16,7 @@
 | 3 — Backend-/DB-Härtung | ✅ abgeschlossen 2026-06-10 (Audit: produktionsreif) |
 | 4 — Pi-Hosting-Paket | ✅ abgeschlossen 2026-06-10 (Runbook + ARM64 verifiziert + Compose-Limits) |
 | 5 — iOS-Paket | ✅ abgeschlossen 2026-06-10 (Capacitor-Gerüst + Review-Account + Checkliste + Asset-Prompts) |
-| 6 — Abschluss | 🔄 läuft (Codex-Fixes ✅, Lighthouse-Pass ✅ 80/100/100, Session-Verify-Workflow läuft) |
+| 6 — Abschluss | ✅ abgeschlossen 2026-06-10 (Session-Verify 18 Agents/9 Findings → alle gefixt; Report: `JOURNEY_REPORT.md`) |
 
 ## Baseline (Phase 0, 2026-06-10)
 
@@ -144,7 +144,18 @@ Upload-Pipeline limitiert (Größe/Pixel/Content-Type). Header seit D1 korrekt.
 - **Phase 6 (bisher):** Lighthouse 74→**80**/100/100 durch GZip-Middleware + Cache-TTLs
   (Assets 1 J immutable, index no-cache) + Label-in-Name-Fix (alles getestet, 371 pytest).
 
-## Nächste Schritte
+## Phase 6 — Abschluss (2026-06-10)
 
-- Session-Verify-Workflow auswerten, bestätigte Findings fixen.
-- JOURNEY_REPORT.md + gebündelte User-Delegation.
+- Session-Verify-Workflow: 18 Agents, 6 Dimensionen, **9 bestätigte Findings, 0
+  falsch-positiv** → alle gefixt in `c4c7ffd` (Kern: Bearer-Auth für die native Shell —
+  der Capacitor-Login wäre mit Cookies strukturell unmöglich gewesen; dazu assetUrl für
+  Shell-Bilder, Review-Account-Härtung inkl. E-Mail-Liste/Expiry/Boot-Validierung,
+  WCAG-2.4.3-Fokus-Reparatur beim Gießen, Raw-Multipart-Regressionstests,
+  Runbook-Cron-Fix).
+- Lighthouse 74→80/100/100 (GZip, Cache-TTLs, Label-in-Name) in `~perf`-Commit.
+- Finaler Web-Smoke nach Auth-Umbau: Login + Gießen + ✓-Morph im echten Chromium ✓.
+- Abschlussbericht: `docs/JOURNEY_REPORT.md` (Funde, Zahlen, Vorschlagsliste,
+  gebündelte User-TODOs 1–9).
+
+**Die Reise ist abgeschlossen.** Branch `production-ready` gepusht; Merge nach main
+liegt bei Marius (Report-Empfehlung beachten).
