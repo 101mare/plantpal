@@ -16,8 +16,17 @@
 - **API-Base-Schalter**: `VITE_API_BASE` in `frontend/src/api.ts` — Web-Build unverändert
   (same-origin), iOS-Build zeigt auf `https://getplantpal.com`.
 - **Review-Account-Mechanik** (Guideline 2.1, Magic-Link-Problem): Backend akzeptiert für
-  GENAU eine konfigurierte E-Mail einen festen Code (`REVIEW_ACCOUNT_EMAIL` +
-  `REVIEW_LOGIN_CODE` in `.env`), wiederholbar, generische Fehler, 5 Tests.
+  konfigurierte E-Mail(s) — Komma-Liste, Haupt- + Reserve-Account — einen festen
+  6-stelligen Code (`REVIEW_ACCOUNT_EMAIL` + `REVIEW_LOGIN_CODE`), optional
+  selbst-deaktivierend via `REVIEW_CODE_EXPIRES_AT`. Format wird beim Boot validiert
+  (fail-fast statt stillem 422 im Review-Fenster). Wiederholbar, generische Fehler.
+- **Native-Shell-Auth KOMPLETT gelöst (Bearer)**: `/auth/verify-code` mit `client:"app"`
+  liefert den Session-Token im Body; die Shell sendet `Authorization: Bearer` (CSRF-immun,
+  keine Cookie-/SameSite-Probleme), `ALLOWED_APP_ORIGINS=capacitor://localhost` schaltet
+  Origin-Allowlist + CORS frei. End-to-end mit PROD-Settings getestet
+  (tests/test_app_shell_auth.py) — der frühere „Cookie-Check im Simulator" entfällt.
+- **Bild-URLs Shell-fest**: `assetUrl()` präfixt `plant.image_url` in allen drei
+  <img>-Stellen mit `VITE_API_BASE` (Web-Build byte-identisch).
 - **In-App-Pflichten**: Account-Löschung in Settings ✅, Datenschutz/Impressum in-App
   erreichbar ✅ (Settings-Footer), Code-Login prominent ✅.
 
@@ -48,13 +57,14 @@ npx cap open ios                     # Xcode: Simulator "iPhone 16 Pro Max" → 
 **Im ersten Simulator-Lauf testen (Reihenfolge!):**
 1. App lädt das **gebündelte** Frontend (kein weißer Flash → `backgroundColor` greift).
 2. Login-Seite → **„Code eingeben"** → Review-Code-Flow gegen getplantpal.com.
-   ⚠️ **Cookie-Check:** Session-Cookie kommt cross-origin von `capacitor://localhost`.
-   Falls der Login im Simulator NICHT hält (Cookie fehlt): Fallback aktivieren —
-   in `capacitor.config.ts` `ios.scheme: "https"` setzen (App läuft dann auf
-   `https://localhost`) **und** im Backend CORS für `https://localhost` erlauben
-   (`Access-Control-Allow-Origin: https://localhost` + `Allow-Credentials` +
-   `SameSite=None; Secure` für die Cookies im App-Kontext). Diese Entscheidung braucht
-   das echte WKWebView-Verhalten — deshalb Mac-Session, nicht vorab raten.
+   Die Shell authentifiziert via **Bearer-Token** (implementiert + prod-getestet):
+   Voraussetzung serverseitig nur `ALLOWED_APP_ORIGINS=capacitor://localhost` in der
+   Pi-`.env`. Kein Cookie-/SameSite-Gamble mehr.
+   ⚠️ **Bekannte v1-Einschränkung Pflanzenfotos in der Shell:** `<img>`-Requests tragen
+   keinen Authorization-Header → geschützte Fotos fallen still auf den Platzhalter
+   zurück. Im Simulator prüfen; falls Fotos für v1 gewünscht: kleines `<AuthedImage>`,
+   das das Bild per `request()` lädt und als blob:-URL setzt (Skizze im Verify-Report),
+   ODER signierte Kurzzeit-Tokens in der Bild-URL. Bewusste Mac-Session-Entscheidung.
 3. Pflanze anlegen (Kamera-Prompt → deutscher Purpose-String?), gießen, Spross, Stats.
 4. Safe Areas auf Notch-Gerät; Dark/Light; reduced motion (Einstellungen → Bedienungshilfen).
 
@@ -104,10 +114,15 @@ testen (inkl. Account-Löschung + Re-Invite!).
 > Privacy policy & legal notice: Settings footer.
 
 **Vor dem Submit:**
-- [ ] Review-Accounts anlegen + befüllen: `docker compose exec plantpal python -m plantpal.cli
-      bootstrap-admin --email review@getplantpal.com` *(bzw. create-invite + registrieren;
-      review2 ebenso)*, 5–6 Pflanzen mit Fotos, 2 durstig, etwas Historie.
-- [ ] `.env` auf dem Pi: `REVIEW_ACCOUNT_EMAIL` + `REVIEW_LOGIN_CODE` setzen, deployen.
+- [ ] Review-Accounts anlegen + befüllen — als **normale User, NICHT admin** (ein
+      erratener Code darf nie Admin-Rechte geben): `create-invite` → mit
+      `review@getplantpal.com` und `review2@getplantpal.com` registrieren, je 5–6
+      Pflanzen mit Fotos, 2 durstig, etwas Historie.
+- [ ] `.env` auf dem Pi: `REVIEW_ACCOUNT_EMAIL=review@…,review2@…` +
+      `REVIEW_LOGIN_CODE` (6 Ziffern) + `REVIEW_CODE_EXPIRES_AT` (~4 Wochen) setzen,
+      deployen.
+- [ ] **Nach dem Review:** alle drei `REVIEW_*`-Werte leeren, deployen, Review-Accounts
+      löschen — der feste Code darf das Review-Fenster nicht überleben.
 - [ ] **Deploy-Freeze + Uptime-Alarm** fürs Review-Fenster (90 % der Reviews < 24 h).
 - [ ] Impressum-Platzhalter ersetzt (User-TODO #5!) — sonst sichere Ablehnung/Abmahnrisiko.
 - [ ] Screenshots nach Plan (`ASSET_PROMPTS.md` §3).

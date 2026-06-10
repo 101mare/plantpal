@@ -178,7 +178,12 @@ async def verify_code(
     # a cross-site page must not be able to log a victim into an attacker-controlled account.
     require_same_origin_submit(request, settings)
     session_token, _user = await auth_service.verify_login_code(db, settings, body.email, body.code)
-    response = JSONResponse({"ok": True})
+    payload: dict[str, object] = {"ok": True}
+    if body.client == "app":
+        # Native shell: session token in the body for Bearer auth (cookies below stay —
+        # harmless in the shell, and the web flow is unchanged when client is omitted).
+        payload["session_token"] = session_token
+    response = JSONResponse(payload)
     set_auth_cookies(response, settings, session_token)
     return response
 

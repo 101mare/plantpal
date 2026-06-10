@@ -422,10 +422,13 @@ async def verify_login_code(
     # when BOTH config values are set; the account must exist (CLI-provisioned) and be
     # active. Route-level rate limits still apply; a wrong code falls through to the normal
     # token flow (and fails generically), so this path leaks nothing about the account.
+    review_active = bool(settings.review_account_emails and settings.REVIEW_LOGIN_CODE)
+    if review_active and settings.REVIEW_CODE_EXPIRES_AT:
+        # Self-disabling: a forgotten fixed code must not outlive the review window.
+        review_active = now < from_iso(settings.REVIEW_CODE_EXPIRES_AT)
     if (
-        settings.REVIEW_ACCOUNT_EMAIL
-        and settings.REVIEW_LOGIN_CODE
-        and email == normalize_email(settings.REVIEW_ACCOUNT_EMAIL)
+        review_active
+        and email in settings.review_account_emails
         and constant_time_equal(
             hash_token(code, settings), hash_token(settings.REVIEW_LOGIN_CODE, settings)
         )

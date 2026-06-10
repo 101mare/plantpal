@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { assetUrl } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 import { statusText, statusShort } from "../status";
@@ -30,15 +32,44 @@ export function ThirstySection({
   onSelect: (p: Plant) => void;
 }) {
   const { t } = useI18n();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const calmRef = useRef<HTMLDivElement>(null);
+  const prevExiting = useRef(0);
+  const hadRows = useRef(false);
+
+  // Focus repair (WCAG 2.4.3, session-verify): watering replaces the focused button with a
+  // static ✓ and unmounts the row ~1s later — keyboard/VoiceOver focus would fall to <body>
+  // twice. Same pattern as UndoCard: repair ONLY when focus actually fell to <body> (never
+  // steal), preferring the next Water button (fast multi-watering), else the band heading.
+  useEffect(() => {
+    const grew = exiting.length > prevExiting.current;
+    prevExiting.current = exiting.length;
+    if (grew && document.activeElement === document.body) {
+      const next = listRef.current?.querySelector<HTMLButtonElement>(
+        "button.pp-btn:not([disabled])",
+      );
+      (next ?? headingRef.current)?.focus();
+    }
+  });
+  // Last thirsty row watered → the WHOLE section (incl. heading) swaps to the calm frame:
+  // park stranded focus on the frame itself. hadRows gates against stealing on page load.
+  useEffect(() => {
+    const empty = plants.length === 0 && exiting.length === 0;
+    if (empty && hadRows.current && document.activeElement === document.body) {
+      calmRef.current?.focus();
+    }
+    hadRows.current = !empty;
+  });
 
   if (plants.length === 0 && exiting.length === 0) {
     return freshCollection ? (
-      <div className="pp-frame mb-6 flex items-center gap-2 px-4 py-3">
+      <div ref={calmRef} tabIndex={-1} className="pp-frame mb-6 flex items-center gap-2 px-4 py-3">
         <PixelIcon name="drop" size={14} className="shrink-0 text-pp-gold" />
         <span className="text-xs opacity-80">{t("thirsty.firstDay")}</span>
       </div>
     ) : (
-      <div className="pp-frame mb-6 flex items-center gap-2 px-4 py-3">
+      <div ref={calmRef} tabIndex={-1} className="pp-frame mb-6 flex items-center gap-2 px-4 py-3">
         <PixelIcon name="check" size={14} className="shrink-0 text-pp-border" />
         <span className="text-xs opacity-80">{t("thirsty.allDone")}</span>
       </div>
@@ -58,14 +89,14 @@ export function ThirstySection({
   return (
     <section className="pp-frame mb-6 p-4">
       {/* The heading IS the glance signal: icon + big count + one word ("3 durstig"). */}
-      <h2 className="mb-3 flex items-center gap-2">
+      <h2 ref={headingRef} tabIndex={-1} className="mb-3 flex items-center gap-2">
         <PixelIcon name="drop" size={18} className="shrink-0 text-pp-gold" />
         <span className="text-2xl leading-none" data-testid="thirsty-count">
           {plants.length}
         </span>
         <span className="pp-heading text-xs">{t("thirsty.count")}</span>
       </h2>
-      <div className="flex flex-col gap-3">
+      <div ref={listRef} className="flex flex-col gap-3">
         {rows.map(({ plant: p, exit }) => (
           <div
             key={p.id}
@@ -87,7 +118,7 @@ export function ThirstySection({
               aria-label={`${p.name} — ${exit ? t("plant.watered") : statusText(p, t)}`}
             >
               <img
-                src={p.image_url ?? "/placeholder.png"}
+                src={p.image_url ? assetUrl(p.image_url) : "/placeholder.png"}
                 alt=""
                 onError={(e) => {
                   const img = e.currentTarget;

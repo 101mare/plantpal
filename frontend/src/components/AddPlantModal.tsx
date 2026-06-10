@@ -27,7 +27,13 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
   // plant #1 is name + interval (+ optional photo). One-way reveal; a one-shot form
   // doesn't need a re-collapse toggle.
   const [more, setMore] = useState(false);
+  const roomRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // The reveal button removes itself — move focus onto the first revealed field so
+  // keyboard/SR users don't strand on <body> (session-verify a11y finding).
+  useEffect(() => {
+    if (more) roomRef.current?.focus();
+  }, [more]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -164,7 +170,6 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             className="pp-tap self-center text-[11px] underline opacity-80"
-            aria-expanded={false}
             onClick={() => setMore(true)}
           >
             {t("plant.moreDetails")}
@@ -173,6 +178,7 @@ export function AddPlantModal({ onClose }: { onClose: () => void }) {
           <>
             <Field label={t("plant.room")}>
               <input
+                ref={roomRef}
                 value={room}
                 maxLength={80}
                 onChange={(e) => setRoom(e.target.value)}

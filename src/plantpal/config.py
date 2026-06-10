@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 
 from pydantic import Field
@@ -45,10 +46,18 @@ class Settings(BaseSettings):
     RESEND_RATE_PER_SEC: float = 5.0
     RESEND_MAX_RETRIES: int = 3
 
-    # Apple App Review: designated account + fixed login code (Guideline 2.1). Both must
+    # Apple App Review: designated account(s) + fixed login code (Guideline 2.1). Both must
     # be set for the path to exist; leave empty everywhere except while a review runs.
+    # REVIEW_ACCOUNT_EMAIL accepts a comma-separated list (main + reserve account for the
+    # reviewer's account-deletion test). REVIEW_CODE_EXPIRES_AT (ISO date/datetime, Berlin)
+    # auto-disables the path — a forgotten fixed code must not live forever.
     REVIEW_ACCOUNT_EMAIL: str = ""
     REVIEW_LOGIN_CODE: str = ""
+    REVIEW_CODE_EXPIRES_AT: str = ""
+
+    # Native-app origins (exact match, comma-separated), e.g. "capacitor://localhost" for
+    # the iOS shell: accepted by the origin checks and offered CORS. Empty = web-only.
+    ALLOWED_APP_ORIGINS: str = ""
 
     # Rate limits "<count>/<window>" where window in s|m|h
     RL_LOGIN_REQUEST_EMAIL: str = "3/h"
@@ -112,6 +121,18 @@ class Settings(BaseSettings):
         # Secure cookies in prod; allow plain HTTP only for local dev.
         return self.is_production or self.BASE_URL.startswith("https://")
 
+    @property
+    def review_account_emails(self) -> frozenset[str]:
+        return frozenset(
+            e.strip().lower() for e in self.REVIEW_ACCOUNT_EMAIL.split(",") if e.strip()
+        )
+
+    @property
+    def allowed_app_origins(self) -> frozenset[str]:
+        return frozenset(
+            o.strip().rstrip("/").lower() for o in self.ALLOWED_APP_ORIGINS.split(",") if o.strip()
+        )
+
     def validate_runtime(self) -> None:
         """Fail fast on contradictory or unsafe production config."""
         if self.SESSION_HARD_CAP_DAYS < self.SESSION_SOFT_CAP_DAYS:
@@ -126,6 +147,22 @@ class Settings(BaseSettings):
             raise ValueError("IMG_SIZE_PX must be positive")
         if self.IMG_MAX_UPLOAD_MB <= 0 or self.IMG_MAX_UPLOAD_MB > 50:
             raise ValueError("IMG_MAX_UPLOAD_MB must be in 1..50")
+        # Review account: fail fast at boot instead of a silent 422 during the Apple review
+        # window — the /auth/verify-code route only accepts ^\d{6}$ codes.
+        if bool(self.REVIEW_ACCOUNT_EMAIL) != bool(self.REVIEW_LOGIN_CODE):
+            raise ValueError("REVIEW_ACCOUNT_EMAIL and REVIEW_LOGIN_CODE must be set together")
+        if self.REVIEW_LOGIN_CODE and not re.fullmatch(r"\d{6}", self.REVIEW_LOGIN_CODE):
+            raise ValueError(
+                "REVIEW_LOGIN_CODE must be exactly 6 digits (the verify-code route and the "
+                "login UI only accept ^\\d{6}$)"
+            )
+        if self.REVIEW_CODE_EXPIRES_AT:
+            from .time_utils import from_iso
+
+            try:
+                from_iso(self.REVIEW_CODE_EXPIRES_AT)
+            except ValueError as exc:
+                raise ValueError("REVIEW_CODE_EXPIRES_AT must be ISO format") from exc
         if self.is_production:
             if not self.BASE_URL.startswith("https://"):
                 raise ValueError("BASE_URL must be https:// in production")

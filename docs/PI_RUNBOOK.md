@@ -84,9 +84,12 @@ Rollback bei Problemen: `git checkout <letzter-guter-commit> && docker compose u
 
 ```bash
 sudo mkdir -p /backup/plantpal && sudo chown $USER /backup/plantpal
-crontab -e   # ergänzen:
-# 30 3 * * *  cd /opt/plantpal && PLANTPAL_BACKUP_DEST=/backup/plantpal ./scripts/backup.sh >> /var/log/plantpal-backup.log 2>&1
+crontab -e   # diese Zeile (ohne führendes #) einfügen:
+30 3 * * *  cd /opt/plantpal && PLANTPAL_BACKUP_DEST=/backup/plantpal ./scripts/backup.sh >> /backup/plantpal/backup.log 2>&1
 ```
+
+> Log bewusst in `/backup/plantpal/` (user-eigen) — `/var/log` ist für die User-Crontab
+> nicht beschreibbar und würde den Job VOR dem Backup mit „Permission denied" abbrechen.
 
 Das Skript zieht einen **WAL-konsistenten** SQLite-Snapshot (sqlite-Backup-API, kein Lock-Risiko)
 plus die Bilder. Optional `PLANTPAL_BACKUP_RSYNC=user@nas:/backups/plantpal` für off-site.

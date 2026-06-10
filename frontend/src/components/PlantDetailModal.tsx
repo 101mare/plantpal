@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, assetUrl } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 import { Backdrop, Field, IMAGE_ACCEPT, MAX_IMAGE_BYTES, MAX_IMAGE_MB } from "./AddPlantModal";
@@ -62,7 +62,7 @@ export function PlantDetailModal({
           : t("date.daysAgo", { n: since });
   const statusLine = statusText(plant, t);
   const imgSrc = plant.image_url
-    ? `${plant.image_url}${imgBust ? `?v=${imgBust}` : ""}`
+    ? `${assetUrl(plant.image_url)}${imgBust ? `?v=${imgBust}` : ""}`
     : "/placeholder.png";
 
   return (

@@ -404,8 +404,9 @@ async def test_create_plant_without_image(client, db, settings):
 
 
 async def test_create_plant_with_empty_image_field(client, db, settings):
-    """Browsers submit an empty file part (filename "") when the picker stays unused —
-    must behave exactly like 'no image', not crash the pipeline."""
+    """httpx omits the filename attribute entirely for ("", b"", …) — Starlette parses a
+    string form field and FastAPI coerces it to None. The REAL browser wire format
+    (filename="" attribute present) is pinned separately with a raw multipart body below."""
     csrf = await _login(client, db, settings)
     r = await client.post(
         "/api/plants",
@@ -433,3 +434,68 @@ async def test_create_plant_nameless_image_part_with_content_rejected(client, db
         )
         assert r.status_code == 422  # rejected at the type boundary, not silently ignored
     assert len((await client.get("/api/plants")).json()["items"]) == before  # no orphans
+
+
+def _raw_multipart(boundary: str, parts: list[tuple[str, str, bytes, str | None]]) -> bytes:
+    """Browser-faithful multipart body: parts = (name, filename_attr|None, content, ctype)."""
+    out = bytearray()
+    for name, filename, content, ctype in parts:
+        out.extend(f"--{boundary}\r\n".encode())
+        disp = f'Content-Disposition: form-data; name="{name}"'
+        if filename is not None:
+            disp += f'; filename="{filename}"'
+        out.extend((disp + "\r\n").encode())
+        if ctype:
+            out.extend(f"Content-Type: {ctype}\r\n".encode())
+        out.extend(b"\r\n")
+        out.extend(content)
+        out.extend(b"\r\n")
+    out.extend(f"--{boundary}--\r\n".encode())
+    return bytes(out)
+
+
+async def test_create_plant_browser_empty_picker_raw_multipart(client, db, settings):
+    """The GENUINE browser wire format for an unused picker: a part WITH filename=""
+    attribute and empty body → Starlette yields UploadFile(filename="", size=0) and the
+    has_image guard must treat it as 'no image' (201, placeholder). Pinned with a raw
+    body because httpx cannot produce this shape (session-verify finding: a guard
+    'mutation' to `image is not None` broke exactly this flagship flow suite-green)."""
+    csrf = await _login(client, db, settings)
+    b = "----PlantPalBoundary7MA4YWxk"
+    body = _raw_multipart(
+        b,
+        [
+            ("name", None, "Browser ohne Foto".encode(), None),
+            ("interval_days", None, b"7", None),
+            ("image", "", b"", "application/octet-stream"),
+        ],
+    )
+    r = await client.post(
+        "/api/plants",
+        content=body,
+        headers={"content-type": f"multipart/form-data; boundary={b}", "X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["image_url"] is None
+
+
+async def test_create_plant_nameless_file_with_content_hits_pipeline(client, db, settings):
+    """filename="" WITH real bytes is an upload attempt: the size-guard half must route it
+    through the image pipeline (valid PNG → processed; never silently dropped)."""
+    csrf = await _login(client, db, settings)
+    b = "----PlantPalBoundary9XYZ"
+    body = _raw_multipart(
+        b,
+        [
+            ("name", None, "Anonymes Foto".encode(), None),
+            ("interval_days", None, b"7", None),
+            ("image", "", _png(), "image/png"),
+        ],
+    )
+    r = await client.post(
+        "/api/plants",
+        content=body,
+        headers={"content-type": f"multipart/form-data; boundary={b}", "X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["image_url"] is not None  # processed, NOT silently ignored

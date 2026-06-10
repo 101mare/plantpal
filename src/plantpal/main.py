@@ -249,6 +249,20 @@ def create_app(settings: Settings | None = None, db: aiosqlite.Connection | None
         )
         return response
 
+    # Native-shell CORS: only when app origins are configured (web-only deployments add
+    # nothing). Bearer auth needs no credentialed CORS; the explicit header allowlist
+    # covers the shell's Authorization + JSON + legacy CSRF header.
+    if settings.allowed_app_origins:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=sorted(settings.allowed_app_origins),
+            allow_methods=["*"],
+            allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+            max_age=86400,
+        )
+
     # Response compression: the SPA bundle is ~290KB raw / ~90KB gzipped — without this the
     # Pi serves it uncompressed on every cold load (Lighthouse: uses-text-compression).
     # Innermost of the pure-ASGI stack; images/webp are already compressed and stay below

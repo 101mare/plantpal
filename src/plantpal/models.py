@@ -21,6 +21,9 @@ class RegisterRequest(BaseModel):
 class VerifyCodeRequest(BaseModel):
     email: EmailStr
     code: str = Field(pattern=r"^\d{6}$")
+    # "app" = native shell (Capacitor): wants the session token in the response body for
+    # Authorization: Bearer auth — it cannot use SameSite cookies on the API origin.
+    client: str | None = None
 
 
 class SessionUser(BaseModel):

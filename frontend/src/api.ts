@@ -45,8 +45,41 @@ type Method = "GET" | "POST" | "PATCH" | "DELETE";
  *  at build time). Empty in the web build → same-origin paths, exactly as before. */
 const API_BASE: string = import.meta.env.VITE_API_BASE ?? "";
 
+/** Absolute URL for server-served assets referenced in markup (<img src>): plant.image_url is
+ *  a RELATIVE path from the API — in the shell it must point at the backend, not the bundle.
+ *  Bundled statics (/placeholder.png, /sprites/…) must NOT go through this. */
+export const assetUrl = (path: string): string => API_BASE + path;
+
+/** Native shell (Capacitor): no SameSite cookies on the API origin and document.cookie can't
+ *  read a cross-origin CSRF cookie — the shell authenticates via Authorization: Bearer with a
+ *  session token handed over by /auth/verify-code (client:"app"). Web builds: inert. */
+const NATIVE: boolean =
+  typeof window !== "undefined" &&
+  Boolean(
+    (
+      window as { Capacitor?: { isNativePlatform?: () => boolean } }
+    ).Capacitor?.isNativePlatform?.(),
+  );
+
+let appToken: string | null = null;
+try {
+  appToken = NATIVE ? localStorage.getItem("pp_app_token") : null;
+} catch {
+  appToken = null;
+}
+function setAppToken(token: string | null): void {
+  appToken = token;
+  try {
+    if (token) localStorage.setItem("pp_app_token", token);
+    else localStorage.removeItem("pp_app_token");
+  } catch {
+    /* storage unavailable → in-memory token still works for this run */
+  }
+}
+
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
+  if (appToken) headers["Authorization"] = `Bearer ${appToken}`;
   if (method !== "GET") headers["X-CSRF-Token"] = readCookie("plantpal_csrf");
 
   let payload: BodyInit | undefined;
@@ -76,11 +109,22 @@ type PlantPatch = Partial<
 export const api = {
   me: () => request<Me>("GET", "/api/me"),
   requestLogin: (email: string) => request("POST", "/auth/request-login", { email }),
-  verifyCode: (email: string, code: string) =>
-    request("POST", "/auth/verify-code", { email, code }),
+  verifyCode: async (email: string, code: string) => {
+    const res = await request<{ ok: boolean; session_token?: string }>(
+      "POST",
+      "/auth/verify-code",
+      { email, code, ...(NATIVE ? { client: "app" } : {}) },
+    );
+    if (res?.session_token) setAppToken(res.session_token);
+    return res;
+  },
   register: (invite_token: string, email: string) =>
     request("POST", "/auth/register", { invite_token, email }),
-  logout: () => request("POST", "/auth/logout"),
+  logout: async () => {
+    const res = await request("POST", "/auth/logout");
+    setAppToken(null);
+    return res;
+  },
 
   listPlants: () => request<{ items: Plant[] }>("GET", "/api/plants").then((r) => r.items),
   createPlant: (form: FormData) => request<Plant>("POST", "/api/plants", form),
@@ -100,7 +144,11 @@ export const api = {
       stage_max: stageMax,
       peak_vitality: peakVitality,
     }),
-  deleteAccount: () => request("DELETE", "/api/account"),
+  deleteAccount: async () => {
+    const res = await request("DELETE", "/api/account");
+    setAppToken(null);
+    return res;
+  },
   exportUrl: () => "/api/account/export",
 
   // user invites (quota-checked, multi-use)

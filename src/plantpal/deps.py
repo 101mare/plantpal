@@ -72,7 +72,15 @@ def settings_dep(request: Request) -> Settings:
 
 async def current_user(request: Request, db=Depends(get_db)):
     settings = request.app.state.settings
-    token = request.cookies.get(settings.COOKIE_NAME)
+    # Native shell (capacitor://): authenticates via Authorization: Bearer <session token> —
+    # WKWebView can neither hold SameSite cookies for the API origin nor read the CSRF cookie.
+    # The header takes precedence over a cookie so a CSRF-skipped request (see require_csrf)
+    # is always authenticated BY the header credential, never by an ambient cookie.
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token: str | None = auth_header[7:].strip()
+    else:
+        token = request.cookies.get(settings.COOKIE_NAME)
     if not token:
         raise AuthError("Not signed in.")
     row = await auth_service.load_session(db, settings, token)
@@ -111,6 +119,10 @@ def origin_allowed(candidate: str | None, settings: Settings) -> bool:
     base = urlparse(settings.BASE_URL)
     if (got.scheme, got.hostname, got.port) == (base.scheme, base.hostname, base.port):
         return True
+    # Native shells (e.g. capacitor://localhost) are explicit, exact-match allowlist entries —
+    # never a substring/startswith check.
+    if candidate.rstrip("/").lower() in settings.allowed_app_origins:
+        return True
     if not settings.is_production:
         return got.hostname in ("localhost", "127.0.0.1")
     return False
@@ -118,6 +130,12 @@ def origin_allowed(candidate: str | None, settings: Settings) -> bool:
 
 async def require_csrf(request: Request) -> None:
     settings = request.app.state.settings
+    # Header-based auth (native shell): a cross-site attacker page cannot attach an
+    # Authorization header without passing CORS, and current_user gives the header
+    # precedence over cookies — double-submit CSRF is both impossible (the shell cannot
+    # read the CSRF cookie cross-origin) and unnecessary here.
+    if request.headers.get("authorization", "").lower().startswith("bearer "):
+        return
     candidate = request.headers.get("origin") or request.headers.get("referer")
     if not origin_allowed(candidate, settings):
         raise CsrfError("Bad origin.")

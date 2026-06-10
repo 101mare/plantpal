@@ -1,3 +1,4 @@
+import { assetUrl } from "../api";
 import { useI18n } from "../i18n";
 import type { Plant } from "../types";
 import { plantStatus, statusText, statusShort, STATUS_DOT } from "../status";
@@ -15,7 +16,7 @@ export function PlantCard({ plant, onClick }: { plant: Plant; onClick: () => voi
       aria-label={`${plant.name} — ${statusText(plant, t)}`}
     >
       <img
-        src={plant.image_url ?? "/placeholder.png"}
+        src={plant.image_url ? assetUrl(plant.image_url) : "/placeholder.png"}
         alt=""
         loading="lazy"
         decoding="async"
