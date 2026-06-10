@@ -93,7 +93,7 @@ body {
      cover-cropped image — even density on every screen, and the tile is downscaled (never
      upscaled), so it stays sharp. */
   background-repeat: repeat;
-  background-size: 520px;
+  background-size: 520px 520px;
   /* No background-attachment: fixed — iOS Safari mis-sizes/janks fixed backgrounds (WebKit
      #275247); a repeating tile already gives even density, so it just scrolls with the page. */
   color: #e8f0e3;
