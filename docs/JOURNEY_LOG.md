@@ -11,8 +11,8 @@
 | Phase | Stand |
 |---|---|
 | 0 — Setup & Bestandsaufnahme | ✅ abgeschlossen 2026-06-10 |
-| 1 — UX-Deep-Research | 🔄 Synthese läuft (4 Research-Agenten fertig) |
-| 2 — UX-Umsetzung | offen |
+| 1 — UX-Deep-Research | ✅ abgeschlossen 2026-06-10 (`docs/UX_RESEARCH_PRODUCTION.md`) |
+| 2 — UX-Umsetzung | ✅ Kern abgeschlossen 2026-06-10 (Codex-Review läuft; D2–D5-Restsweep im Phase-6-Verify) |
 | 3 — Backend-/DB-Härtung | offen |
 | 4 — Pi-Hosting-Paket | offen |
 | 5 — iOS-Paket | offen |
@@ -79,8 +79,28 @@
    generieren.
 4. Pi-Deploy nach `docs/PI_RUNBOOK.md` (entsteht in Phase 4).
 
+## Phase 2 — gelieferte Pakete (alle Gates grün, je Commit verifiziert)
+
+| Commit | Paket |
+|---|---|
+| `df59e18` | Zahl-zuerst-Band + PixelIcon-Set (Emoji-frei) + Kurz-Status-Vokabular + ✓-Exit-Morph + Karten-Verdichtung + Suche ab 6 Pflanzen |
+| `f36eccd` | Foto optional (Backend+Frontend, +2 pytest) + Progressive Disclosure im Add-Sheet → erste Pflanze in <30 s |
+| `7388f7c` | Legal-Footer in Settings (Apple 5.1.1(i)/§5 DDG), i18n-Legal-Labels, Theme-Toggle-Emojis raus |
+| `~`      | Stats beruhigt: Bestwert statt Streak-0, Ø-Intervall-Kachel, Trophy/Lock/Bars-PixelIcons, Spross-Texte halbiert |
+| `a348a03` | Hintergrund-Galerie 7→3 kuratiert (V2), Legacy-Sanitize |
+| `~`      | Tag-1-Ritual-Zeile („Morgen siehst du hier, wer Durst hat.") — selbstentfernend |
+
+Verifiziert via Playwright (echtes Chromium, 390×844@2x, de+en): Band-Zustände
+(n>0 / Morph / Alle versorgt / Tag-1), Quick-Add ohne Foto end-to-end, Stats/Spross.
+Neue Funde unterwegs: Impressum enthält Platzhalter `[Dein Name]` → **User-TODO #5**.
+
+## Gesammelte User-TODOs — Ergänzung
+
+5. **Impressum ausfüllen** (`frontend/src/pages/LegalPages.tsx`): echter Name/Adresse/
+   E-Mail statt Platzhalter — §5-DDG-Pflicht VOR jedem öffentlichen Hosting/Submission.
+
 ## Nächste Schritte
 
-- Phase 1: Synthese der 4 Research-Berichte → `docs/UX_RESEARCH_PRODUCTION.md`.
-- Phase 2: Findings F2–F9 + Research-Empfehlungen umsetzen (frontend-design-Qualität,
-  kein Slop), Playwright-Nachweis-Screenshots vorher/nachher.
+- Codex-Review über das Phase-2-Diff, bestätigte Findings fixen.
+- Phase 3: DB-Audit (Indizes/EXPLAIN), Lasttest 50×100×2J mit p95, Backup-Restore-Probe,
+  Security-Pass.
