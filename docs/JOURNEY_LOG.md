@@ -13,7 +13,7 @@
 | 0 — Setup & Bestandsaufnahme | ✅ abgeschlossen 2026-06-10 |
 | 1 — UX-Deep-Research | ✅ abgeschlossen 2026-06-10 (`docs/UX_RESEARCH_PRODUCTION.md`) |
 | 2 — UX-Umsetzung | ✅ Kern abgeschlossen 2026-06-10 (Codex-Review läuft; D2–D5-Restsweep im Phase-6-Verify) |
-| 3 — Backend-/DB-Härtung | offen |
+| 3 — Backend-/DB-Härtung | ✅ abgeschlossen 2026-06-10 (Audit: produktionsreif) |
 | 4 — Pi-Hosting-Paket | offen |
 | 5 — iOS-Paket | offen |
 | 6 — Abschluss | offen |
@@ -99,8 +99,38 @@ Neue Funde unterwegs: Impressum enthält Platzhalter `[Dein Name]` → **User-TO
 5. **Impressum ausfüllen** (`frontend/src/pages/LegalPages.tsx`): echter Name/Adresse/
    E-Mail statt Platzhalter — §5-DDG-Pflicht VOR jedem öffentlichen Hosting/Submission.
 
+## Phase 3 — Backend-/DB-Audit (2026-06-10): Urteil „produktionsreif"
+
+**Lasttest** (50 User × 100 Pflanzen × 2 J ≈ 510 776 Waterings, 63 MB, x86; Messung am
+Extremnutzer mit 100 Pflanzen):
+
+| Endpoint | p50 | p95 |
+|---|---|---|
+| GET /api/plants (100 Stück) | 3,9 ms | 9,6 ms |
+| GET /api/plants?group=room | 5,8 ms | 10,6 ms |
+| GET /api/stats | 24,1 ms | **33,0 ms** (schwerster) |
+| GET /api/me (Session-Check) | 3,7 ms | 4,6 ms |
+| POST water | 7,6 ms | 8,9 ms |
+| GET waterings-Historie | 11,6 ms | 14,5 ms |
+
+Pi-Hochrechnung (×3–5): schlechtester Fall ~100–165 ms für die Stats-Seite eines
+100-Pflanzen-Users → **keine Optimierung nötig**; bewusst KEIN vorauseilendes Umbauen von
+`compute_stats` (lädt volle User-Historie — bei Zielskala unkritisch, Semantik bleibt).
+Nebenbefund: Rate-Limiter (30/m Mutationen) bremste den Benchmark korrekt aus ✓.
+
+**Indizes:** bereits vollständig (user/plant-FKs, partielle Indizes für aktive Pflanzen,
+Sessions via `session_hash UNIQUE`, waterings beidseitig mit `watered_at DESC`). EXPLAIN
+zeigt Index-Pfade, keine Full-Scans auf heißen Queries.
+
+**Backup-Restore-Probe** (Code-Pfad von scripts/backup.sh): Snapshot der 63-MB-DB unter
+laufendem Server in 0,28 s, `integrity_check: ok`, alle Zeilenzahlen identisch, Restore
+bootet durch die Migrationen. Litestream bleibt als optionales Off-site-Profil.
+
+**Security-Pass:** Tokens HMAC-gepeppert (sha256), Session-Cookie HttpOnly+Secure(prod)+
+SameSite=Lax, CSRF double-submit, keine sensiblen Daten in Logs, keine print()-Reste,
+Upload-Pipeline limitiert (Größe/Pixel/Content-Type). Header seit D1 korrekt.
+
 ## Nächste Schritte
 
-- Codex-Review über das Phase-2-Diff, bestätigte Findings fixen.
-- Phase 3: DB-Audit (Indizes/EXPLAIN), Lasttest 50×100×2J mit p95, Backup-Restore-Probe,
-  Security-Pass.
+- Codex-Findings (läuft im Hintergrund) einarbeiten.
+- Phase 4: ARM64-Build, Compose-Ressourcen-Limits, .env.example, PI_RUNBOOK.md.
